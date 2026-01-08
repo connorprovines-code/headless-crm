@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Headless CRM</title>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #fff;
+      padding: 16px 24px;
+      border-bottom: 1px solid #d2d2d7;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1d1d1f;
+    }
+
+    header .status {
+      font-size: 12px;
+      color: #86868b;
+    }
+
+    header .status.connected { color: #34c759; }
+    header .status.error { color: #ff3b30; }
+
+    main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+    }
+
+    .sidebar {
+      width: 320px;
+      background: #f5f5f7;
+      overflow-y: auto;
+      padding: 16px;
+      border-left: 1px solid #d2d2d7;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      background: #fafafa;
+    }
+
+    .message {
+      margin-bottom: 16px;
+      max-width: 85%;
+    }
+
+    .message.user {
+      margin-left: auto;
+      text-align: right;
+    }
+
+    .message .content {
+      display: inline-block;
+      padding: 12px 16px;
+      border-radius: 12px;
+      text-align: left;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .message.user .content {
+      background: #007aff;
+      color: #fff;
+    }
+
+    .message.assistant .content {
+      background: #fff;
+      color: #1d1d1f;
+      border: 1px solid #e5e5ea;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .message.system .content {
+      background: #f2f2f7;
+      color: #86868b;
+      font-style: italic;
+      font-size: 13px;
+      border: 1px solid #e5e5ea;
+    }
+
+    .message .tool-call {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #86868b;
+    }
+
+    .input-area {
+      padding: 16px 20px;
+      background: #fff;
+      border-top: 1px solid #d2d2d7;
+    }
+
+    .input-wrapper {
+      display: flex;
+      gap: 12px;
+    }
+
+    .input-wrapper input {
+      flex: 1;
+      padding: 12px 16px;
+      background: #f5f5f7;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+      color: #1d1d1f;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .input-wrapper input:focus {
+      border-color: #007aff;
+      background: #fff;
+    }
+
+    .input-wrapper input:disabled {
+      opacity: 0.5;
+    }
+
+    .input-wrapper button {
+      padding: 12px 24px;
+      background: #007aff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .input-wrapper button:hover:not(:disabled) {
+      background: #0056b3;
+    }
+
+    .input-wrapper button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .sidebar h2 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #86868b;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-section {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-item {
+      padding: 10px 12px;
+      background: #fff;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      border: 1px solid #e5e5ea;
+    }
+
+    .sidebar-item .name {
+      font-weight: 500;
+      color: #1d1d1f;
+    }
+
+    .sidebar-item .meta {
+      color: #86868b;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .sidebar-item .score {
+      display: inline-block;
+      padding: 2px 6px;
+      background: #f2f2f7;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 8px;
+      color: #1d1d1f;
+    }
+
+    .sidebar-item .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+      margin-left: 8px;
+    }
+
+    .sidebar-item .badge.enabled {
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .sidebar-item .badge.disabled {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .sidebar-item .badge.manual {
+      background: #e0e7ff;
+      color: #4338ca;
+    }
+
+    .sidebar-item .badge.event {
+      background: #fef3c7;
+      color: #d97706;
+    }
+
+    .sidebar-item .badge.schedule {
+      background: #dbeafe;
+      color: #2563eb;
+    }
+
+    .empty-state {
+      color: #86868b;
+      font-size: 13px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d2d2d7;
+      border-top-color: #007aff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      padding: 12px 16px;
+    }
+
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: #86868b;
+      border-radius: 50%;
+      animation: bounce 1.4s ease-in-out infinite;
+    }
+
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-6px); }
+    }
+
+    .content strong { font-weight: 600; }
+    .content code {
+      background: #f2f2f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 13px;
+    }
+
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid #d2d2d7;
+      background: #fff;
+      padding: 0 16px;
+    }
+
+    .tab {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #86868b;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+
+    .tab:hover {
+      color: #1d1d1f;
+    }
+
+    .tab.active {
+      color: #007aff;
+      border-bottom-color: #007aff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Headless CRM</h1>
+    <div class="status" id="status">Connecting...</div>
+  </header>
+
+  <main>
+    <div class="chat-panel">
+      <div class="messages" id="messages">
+        <div class="message system">
+          <div class="content">CRM Assistant ready. Try:
+- "add company TechStart, they do AI stuff"
+- "add contact John at TechStart, john@techstart.com"
+- "who should I call today?"
+- "create an agent that bumps score on positive calls"
+- "show me all agents"</div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div class="input-wrapper">
+          <input type="text" id="input" placeholder="Type a message..." autocomplete="off">
+          <button id="send">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="tab-bar">
+        <div class="tab active" data-tab="crm">CRM</div>
+        <div class="tab" data-tab="agents">Agents</div>
+      </div>
+
+      <div class="tab-content active" id="tab-crm">
+        <div class="sidebar-section">
+          <h2>Recent Contacts</h2>
+          <div id="recent-contacts">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Companies</h2>
+          <div id="recent-companies">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Open Tasks</h2>
+          <div id="open-tasks">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-agents">
+        <div class="sidebar-section">
+          <h2>Configured Agents</h2>
+          <div id="agents-list">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Recent Activity</h2>
+          <div id="agent-activity">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h2>Pending Events</h2>
+          <div id="pending-events">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ==========================================================================
+    // CONFIGURATION - Load from config.js or prompt user
+    // ==========================================================================
+    let CONFIG = {
+      SUPABASE_URL: '',
+      SUPABASE_KEY: '',
+      ANTHROPIC_API_KEY: '',
+    };
+
+    // Try to load from config.js (create this file locally, it's gitignored)
+    try {
+      const configScript = document.querySelector('script[src="config.js"]');
+      if (window.CRM_CONFIG) {
+        CONFIG = { ...CONFIG, ...window.CRM_CONFIG };
+      }
+    } catch (e) {}
+
+    // If no config, check localStorage
+    if (!CONFIG.SUPABASE_URL) {
+      CONFIG.SUPABASE_URL = localStorage.getItem('CRM_SUPABASE_URL') || '';
+      CONFIG.SUPABASE_KEY = localStorage.getItem('CRM_SUPABASE_KEY') || '';
+      CONFIG.ANTHROPIC_API_KEY = localStorage.getItem('CRM_ANTHROPIC_API_KEY') || '';
+    }
+
+    // If still no config, prompt user
+    if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.ANTHROPIC_API_KEY) {
+      const setupConfig = () => {
+        CONFIG.SUPABASE_URL = prompt('Enter your Supabase URL:', CONFIG.SUPABASE_URL || 'https://xxx.supabase.co');
+        CONFIG.SUPABASE_KEY = prompt('Enter your Supabase Service Key:', CONFIG.SUPABASE_KEY);
+        CONFIG.ANTHROPIC_API_KEY = prompt('Enter your Anthropic API Key:', CONFIG.ANTHROPIC_API_KEY);
+
+        if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY && CONFIG.ANTHROPIC_API_KEY) {
+          localStorage.setItem('CRM_SUPABASE_URL', CONFIG.SUPABASE_URL);
+          localStorage.setItem('CRM_SUPABASE_KEY', CONFIG.SUPABASE_KEY);
+          localStorage.setItem('CRM_ANTHROPIC_API_KEY', CONFIG.ANTHROPIC_API_KEY);
+          location.reload();
+        }
+      };
+      setupConfig();
+    }
+
+    // ==========================================================================
+    // INITIALIZE SUPABASE
+    // ==========================================================================
+    const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+    const DEFAULT_TEAM_ID = null;
+    const DEFAULT_USER_ID = null;
+
+    // ==========================================================================
+    // TOOL DEFINITIONS
+    // ==========================================================================
+    const toolDefinitions = [
+      {
+        name: 'search_companies',
+        description: 'Search for companies by name or domain',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search term (company name or domain)' },
+            limit: { type: 'number', description: 'Max results to return (default 10)' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'search_contacts',
+        description: 'Search for contacts by name, email, or company',
+        input_schema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search term (name, email, or company name)' },
+            limit: { type: 'number', description: 'Max results to return (default 10)' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'get_company_brief',
+        description: 'Get a full context dump for a company including contacts, deals, recent interactions',
+        input_schema: {
+          type: 'object',
+          properties: {
+            company_id: { type: 'string', description: 'UUID of the company' },
+            company_name: { type: 'string', description: 'Name of the company (used if company_id not provided)' },
+          },
+        },
+      },
+      {
+        name: 'get_contact_brief',
+        description: 'Get full context for a contact including company, interactions, tasks',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'UUID of the contact' },
+            contact_name: { type: 'string', description: 'Name of the contact (used if contact_id not provided)' },
+          },
+        },
+      },
+      {
+        name: 'create_company',
+        description: 'Create a new company',
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Company name' },
+            domain: { type: 'string', description: 'Website domain (e.g., acme.com)' },
+            industry: { type: 'string', description: 'Industry/sector' },
+            employee_count: { type: 'string', description: 'Size range: 1-10, 11-50, 51-200, 201-500, 500+' },
+            notes: { type: 'string', description: 'Additional notes about the company' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'create_contact',
+        description: 'Create a new contact, optionally linked to a company',
+        input_schema: {
+          type: 'object',
+          properties: {
+            first_name: { type: 'string', description: 'First name' },
+            last_name: { type: 'string', description: 'Last name' },
+            email: { type: 'string', description: 'Email address' },
+            phone: { type: 'string', description: 'Phone number' },
+            title: { type: 'string', description: 'Job title' },
+            role_type: { type: 'string', description: 'Role type: decision_maker, champion, influencer, blocker, user, other' },
+            company_id: { type: 'string', description: 'UUID of the company to link' },
+            company_name: { type: 'string', description: 'Company name (used to find/create company if company_id not provided)' },
+            notes: { type: 'string', description: 'Additional notes' },
+          },
+          required: ['first_name'],
+        },
+      },
+      {
+        name: 'log_interaction',
+        description: 'Log an interaction (call, email, meeting, etc.) with a contact',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'UUID of the contact' },
+            contact_name: { type: 'string', description: 'Contact name (used if contact_id not provided)' },
+            type: { type: 'string', description: 'Type: call, email_sent, email_received, meeting, linkedin, slack, note' },
+            channel: { type: 'string', description: 'Channel: phone, email, linkedin, slack, in_person, video' },
+            direction: { type: 'string', description: 'Direction: inbound, outbound' },
+            subject: { type: 'string', description: 'Subject/topic of interaction' },
+            content: { type: 'string', description: 'Notes or content of the interaction' },
+            sentiment: { type: 'string', description: 'Sentiment: positive, neutral, negative' },
+            outcome: { type: 'string', description: 'Outcome: connected, voicemail, no_answer, replied, scheduled, etc.' },
+            follow_up_date: { type: 'string', description: 'Date to follow up (YYYY-MM-DD)' },
+          },
+          required: ['type'],
+        },
+      },
+      {
+        name: 'create_task',
+        description: 'Create a task/follow-up for a contact',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'UUID of the contact' },
+            contact_name: { type: 'string', description: 'Contact name (used if contact_id not provided)' },
+            type: { type: 'string', description: 'Task type: call, email, follow_up, research, meeting, other' },
+            priority: { type: 'number', description: 'Priority 1-10 (1 = highest)' },
+            reason: { type: 'string', description: 'Why this task exists' },
+            due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
+          },
+          required: ['type', 'reason'],
+        },
+      },
+      {
+        name: 'get_call_list',
+        description: 'Get the prioritized call list for today (or a specific date)',
+        input_schema: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', description: 'Date (YYYY-MM-DD), defaults to today' },
+            limit: { type: 'number', description: 'Max tasks to return (default 10)' },
+          },
+        },
+      },
+      {
+        name: 'update_score',
+        description: 'Manually update the score for a contact or company',
+        input_schema: {
+          type: 'object',
+          properties: {
+            entity_type: { type: 'string', description: 'Entity type: contact or company' },
+            entity_id: { type: 'string', description: 'UUID of the entity' },
+            entity_name: { type: 'string', description: 'Name (used if entity_id not provided)' },
+            score: { type: 'number', description: 'New score value (0-100)' },
+            reason: { type: 'string', description: 'Reason for the score update' },
+          },
+          required: ['entity_type', 'score'],
+        },
+      },
+      {
+        name: 'complete_task',
+        description: 'Mark a task as completed',
+        input_schema: {
+          type: 'object',
+          properties: {
+            task_id: { type: 'string', description: 'UUID of the task' },
+          },
+          required: ['task_id'],
+        },
+      },
+      {
+        name: 'list_open_tasks',
+        description: 'List all open (uncompleted) tasks',
+        input_schema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Max tasks to return (default 20)' },
+          },
+        },
+      },
+      // Agent tools
+      {
+        name: 'list_agents',
+        description: 'List all configured agents in the system',
+        input_schema: {
+          type: 'object',
+          properties: {
+            include_disabled: { type: 'boolean', description: 'Include disabled agents (default false)' },
+          },
+        },
+      },
+      {
+        name: 'get_agent_details',
+        description: 'Get full details about a specific agent including recent runs',
+        input_schema: {
+          type: 'object',
+          properties: {
+            agent_id: { type: 'string', description: 'UUID of the agent' },
+            agent_name: { type: 'string', description: 'Name of the agent (used if agent_id not provided)' },
+          },
+        },
+      },
+      {
+        name: 'create_agent',
+        description: 'Create a new agent configuration. Agents can be triggered manually, by events, on schedule, or chained after other agents.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the agent' },
+            description: { type: 'string', description: 'What this agent does' },
+            trigger_type: { type: 'string', description: 'Trigger type: manual, event, schedule, or chained' },
+            trigger_config: {
+              type: 'object',
+              description: 'Trigger configuration. For event: {events: ["contact.created"]}. For schedule: {cron: "0 8 * * *"}. For chained: {after_agent: "uuid"}',
+            },
+            conditions: {
+              type: 'array',
+              description: 'Conditions that must be met for agent to run. Array of {field, operator, value}',
+            },
+            actions: {
+              type: 'array',
+              description: 'Actions the agent performs. Array of action objects like {type: "update_field", target: "contact.score", operation: "increment", value: 10}',
+            },
+            allowed_tools: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'List of tool names this agent can use. Empty = all tools.',
+            },
+          },
+          required: ['name', 'description'],
+        },
+      },
+      {
+        name: 'update_agent',
+        description: 'Update an existing agent configuration',
+        input_schema: {
+          type: 'object',
+          properties: {
+            agent_id: { type: 'string', description: 'UUID of the agent' },
+            agent_name: { type: 'string', description: 'Name of the agent (used if agent_id not provided)' },
+            name: { type: 'string', description: 'New name' },
+            description: { type: 'string', description: 'New description' },
+            is_enabled: { type: 'boolean', description: 'Enable or disable the agent' },
+            trigger_type: { type: 'string', description: 'New trigger type' },
+            trigger_config: { type: 'object', description: 'New trigger configuration' },
+            conditions: { type: 'array', description: 'New conditions' },
+            actions: { type: 'array', description: 'New actions' },
+            allowed_tools: { type: 'array', items: { type: 'string' }, description: 'New allowed tools list' },
+          },
+        },
+      },
+      {
+        name: 'get_recent_agent_activity',
+        description: 'Get recent activity from all agents (from agent_logs)',
+        input_schema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Max entries to return (default 20)' },
+          },
+        },
+      },
+      {
+        name: 'get_pending_events',
+        description: 'Get events that are waiting to be processed by agents',
+        input_schema: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number', description: 'Max events to return (default 50)' },
+          },
+        },
+      },
+    ];
+
+    // ==========================================================================
+    // TOOL IMPLEMENTATIONS
+    // ==========================================================================
+
+    async function logAgentAction(agent, action, entityType, entityId, input, output) {
+      try {
+        await supabase.from('agent_logs').insert({
+          team_id: DEFAULT_TEAM_ID,
+          agent,
+          action,
+          entity_type: entityType,
+          entity_id: entityId,
+          input,
+          output,
+        });
+      } catch (e) {
+        console.error('Failed to log agent action:', e.message);
+      }
+    }
+
+    const toolFunctions = {
+      async search_companies({ query, limit = 10 }) {
+        const { data, error } = await supabase
+          .from('companies')
+          .select('id, name, domain, industry, employee_count, score')
+          .or(`name.ilike.%${query}%,domain.ilike.%${query}%`)
+          .limit(limit);
+        if (error) throw new Error(error.message);
+        return { companies: data, count: data.length };
+      },
+
+      async search_contacts({ query, limit = 10 }) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select(`id, first_name, last_name, email, phone, title, score, status, companies(id, name)`)
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
+          .limit(limit);
+        if (error) throw new Error(error.message);
+        return { contacts: data, count: data.length };
+      },
+
+      async get_company_brief({ company_id, company_name }) {
+        let company;
+        if (company_id) {
+          const { data, error } = await supabase.from('companies').select('*').eq('id', company_id).single();
+          if (error) throw new Error(error.message);
+          company = data;
+        } else if (company_name) {
+          const { data, error } = await supabase.from('companies').select('*').ilike('name', `%${company_name}%`).limit(1).single();
+          if (error) throw new Error(`Company not found: ${company_name}`);
+          company = data;
+        } else {
+          throw new Error('Must provide company_id or company_name');
+        }
+
+        const { data: contacts } = await supabase.from('contacts').select('id, first_name, last_name, email, title, role_type, score').eq('company_id', company.id);
+        const { data: deals } = await supabase.from('deals').select('id, name, stage, value, close_date').eq('company_id', company.id);
+        const { data: interactions } = await supabase.from('interactions').select('id, type, subject, sentiment, outcome, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(10);
+        const { data: tasks } = await supabase.from('tasks').select('id, type, priority, reason, due_date').eq('company_id', company.id).is('completed_at', null);
+
+        return { company, contacts: contacts || [], deals: deals || [], recent_interactions: interactions || [], open_tasks: tasks || [] };
+      },
+
+      async get_contact_brief({ contact_id, contact_name }) {
+        let contact;
+        if (contact_id) {
+          const { data, error } = await supabase.from('contacts').select('*, companies(id, name, domain, industry)').eq('id', contact_id).single();
+          if (error) throw new Error(error.message);
+          contact = data;
+        } else if (contact_name) {
+          const { data, error } = await supabase.from('contacts').select('*, companies(id, name, domain, industry)').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          if (error) throw new Error(`Contact not found: ${contact_name}`);
+          contact = data;
+        } else {
+          throw new Error('Must provide contact_id or contact_name');
+        }
+
+        const { data: interactions } = await supabase.from('interactions').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(15);
+        const { data: tasks } = await supabase.from('tasks').select('*').eq('contact_id', contact.id).is('completed_at', null);
+        const { data: signals } = await supabase.from('signals').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10);
+
+        return { contact, interactions: interactions || [], open_tasks: tasks || [], recent_signals: signals || [] };
+      },
+
+      async create_company({ name, domain, industry, employee_count, notes }) {
+        const { data, error } = await supabase
+          .from('companies')
+          .insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, name, domain, industry, employee_count, notes })
+          .select()
+          .single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'create_company', 'company', data.id, { name, domain }, data);
+        return { company: data, message: `Created company: ${name}` };
+      },
+
+      async create_contact({ first_name, last_name, email, phone, title, role_type, company_id, company_name, notes }) {
+        let resolvedCompanyId = company_id;
+        if (!resolvedCompanyId && company_name) {
+          const { data: existing } = await supabase.from('companies').select('id').ilike('name', `%${company_name}%`).limit(1).single();
+          if (existing) {
+            resolvedCompanyId = existing.id;
+          } else {
+            const { data: newCompany, error } = await supabase.from('companies').insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, name: company_name }).select().single();
+            if (error) throw new Error(error.message);
+            resolvedCompanyId = newCompany.id;
+          }
+        }
+
+        const { data, error } = await supabase
+          .from('contacts')
+          .insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, company_id: resolvedCompanyId, first_name, last_name, email, phone, title, role_type, notes })
+          .select('*, companies(name)')
+          .single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'create_contact', 'contact', data.id, { first_name, last_name, company_name }, data);
+
+        const fullName = [first_name, last_name].filter(Boolean).join(' ');
+        const companyInfo = data.companies?.name ? ` at ${data.companies.name}` : '';
+        return { contact: data, message: `Created contact: ${fullName}${companyInfo}` };
+      },
+
+      async log_interaction({ contact_id, contact_name, type, channel, direction, subject, content, sentiment, outcome, follow_up_date }) {
+        let resolvedContactId = contact_id;
+        let contact = null;
+        if (!resolvedContactId && contact_name) {
+          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          if (data) { resolvedContactId = data.id; contact = data; }
+        } else if (resolvedContactId) {
+          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').eq('id', resolvedContactId).single();
+          contact = data;
+        }
+        if (!resolvedContactId) throw new Error('Contact not found. Please create the contact first.');
+
+        const { data, error } = await supabase
+          .from('interactions')
+          .insert({ team_id: DEFAULT_TEAM_ID, user_id: DEFAULT_USER_ID, contact_id: resolvedContactId, company_id: contact?.company_id, type, channel, direction, subject, content, sentiment, outcome, follow_up_date })
+          .select()
+          .single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'log_interaction', 'interaction', data.id, { contact_name, type, sentiment }, data);
+
+        const contactFullName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') : 'contact';
+        return { interaction: data, message: `Logged ${type} with ${contactFullName}` };
+      },
+
+      async create_task({ contact_id, contact_name, type, priority = 5, reason, due_date }) {
+        let resolvedContactId = contact_id;
+        let contact = null;
+        if (!resolvedContactId && contact_name) {
+          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          if (data) { resolvedContactId = data.id; contact = data; }
+        }
+
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert({ team_id: DEFAULT_TEAM_ID, assigned_to: DEFAULT_USER_ID, contact_id: resolvedContactId, company_id: contact?.company_id, type, priority, reason, due_date })
+          .select()
+          .single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'create_task', 'task', data.id, { type, reason, due_date }, data);
+        return { task: data, message: `Created task: ${reason}` };
+      },
+
+      async get_call_list({ date, limit = 10 }) {
+        const targetDate = date || new Date().toISOString().split('T')[0];
+        const { data, error } = await supabase
+          .from('tasks')
+          .select(`id, type, priority, reason, due_date, contacts(id, first_name, last_name, email, phone, score, companies(name))`)
+          .is('completed_at', null)
+          .lte('due_date', targetDate)
+          .order('priority', { ascending: true })
+          .order('due_date', { ascending: true })
+          .limit(limit);
+        if (error) throw new Error(error.message);
+
+        const callList = (data || []).map((task, idx) => ({
+          rank: idx + 1,
+          priority: task.priority,
+          type: task.type,
+          reason: task.reason,
+          due_date: task.due_date,
+          contact: task.contacts ? {
+            name: [task.contacts.first_name, task.contacts.last_name].filter(Boolean).join(' '),
+            company: task.contacts.companies?.name,
+            phone: task.contacts.phone,
+            email: task.contacts.email,
+            score: task.contacts.score,
+          } : null,
+          task_id: task.id,
+        }));
+        return { date: targetDate, call_list: callList, count: callList.length };
+      },
+
+      async update_score({ entity_type, entity_id, entity_name, score, reason }) {
+        const table = entity_type === 'contact' ? 'contacts' : 'companies';
+        let resolvedId = entity_id;
+        if (!resolvedId && entity_name) {
+          const { data } = await supabase.from(table).select('id').ilike(entity_type === 'contact' ? 'first_name' : 'name', `%${entity_name}%`).limit(1).single();
+          if (data) resolvedId = data.id;
+        }
+        if (!resolvedId) throw new Error(`${entity_type} not found`);
+
+        const { data, error } = await supabase.from(table).update({ score }).eq('id', resolvedId).select().single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'update_score', entity_type, resolvedId, { score, reason }, data);
+        return { updated: data, message: `Updated ${entity_type} score to ${score}` };
+      },
+
+      async complete_task({ task_id }) {
+        const { data, error } = await supabase.from('tasks').update({ completed_at: new Date().toISOString() }).eq('id', task_id).select().single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'complete_task', 'task', task_id, {}, data);
+        return { task: data, message: 'Task marked as completed' };
+      },
+
+      async list_open_tasks({ limit = 20 }) {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select(`id, type, priority, reason, due_date, created_at, contacts(first_name, last_name, companies(name))`)
+          .is('completed_at', null)
+          .order('priority', { ascending: true })
+          .order('due_date', { ascending: true })
+          .limit(limit);
+        if (error) throw new Error(error.message);
+        return { tasks: data, count: data.length };
+      },
+
+      // Agent tools
+      async list_agents({ include_disabled = false }) {
+        let query = supabase
+          .from('agent_configs')
+          .select('id, name, description, is_enabled, trigger_type, last_run_at, run_count, error_count')
+          .order('created_at', { ascending: false });
+
+        if (!include_disabled) {
+          query = query.eq('is_enabled', true);
+        }
+
+        const { data, error } = await query;
+        if (error) throw new Error(error.message);
+        return { agents: data, count: data.length };
+      },
+
+      async get_agent_details({ agent_id, agent_name }) {
+        let agent;
+        if (agent_id) {
+          const { data, error } = await supabase.from('agent_configs').select('*').eq('id', agent_id).single();
+          if (error) throw new Error(error.message);
+          agent = data;
+        } else if (agent_name) {
+          const { data, error } = await supabase.from('agent_configs').select('*').ilike('name', `%${agent_name}%`).single();
+          if (error) throw new Error(`Agent not found: ${agent_name}`);
+          agent = data;
+        } else {
+          throw new Error('Must provide agent_id or agent_name');
+        }
+
+        const { data: runs } = await supabase
+          .from('agent_runs')
+          .select('id, status, started_at, completed_at, entities_affected, tokens_used, error_message')
+          .eq('agent_config_id', agent.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        return { agent, recent_runs: runs || [] };
+      },
+
+      async create_agent({ name, description, trigger_type, trigger_config, conditions, actions, allowed_tools }) {
+        const { data, error } = await supabase
+          .from('agent_configs')
+          .insert({
+            team_id: DEFAULT_TEAM_ID,
+            created_by: DEFAULT_USER_ID,
+            name,
+            description,
+            trigger_type: trigger_type || 'manual',
+            trigger_config: trigger_config || {},
+            conditions: conditions || [],
+            actions: actions || [],
+            allowed_tools: allowed_tools || [],
+            is_enabled: true,
+          })
+          .select()
+          .single();
+
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'create_agent', 'agent_config', data.id, { name, trigger_type }, data);
+        return { agent: data, message: `Created agent: ${name}` };
+      },
+
+      async update_agent({ agent_id, agent_name, name, description, is_enabled, trigger_type, trigger_config, conditions, actions, allowed_tools }) {
+        let resolvedId = agent_id;
+        if (!resolvedId && agent_name) {
+          const { data } = await supabase.from('agent_configs').select('id').ilike('name', `%${agent_name}%`).single();
+          if (data) resolvedId = data.id;
+        }
+        if (!resolvedId) throw new Error('Agent not found');
+
+        const updates = {};
+        if (name !== undefined) updates.name = name;
+        if (description !== undefined) updates.description = description;
+        if (is_enabled !== undefined) updates.is_enabled = is_enabled;
+        if (trigger_type !== undefined) updates.trigger_type = trigger_type;
+        if (trigger_config !== undefined) updates.trigger_config = trigger_config;
+        if (conditions !== undefined) updates.conditions = conditions;
+        if (actions !== undefined) updates.actions = actions;
+        if (allowed_tools !== undefined) updates.allowed_tools = allowed_tools;
+
+        const { data, error } = await supabase.from('agent_configs').update(updates).eq('id', resolvedId).select().single();
+        if (error) throw new Error(error.message);
+        await logAgentAction('web', 'update_agent', 'agent_config', resolvedId, updates, data);
+        return { agent: data, message: `Updated agent: ${data.name}` };
+      },
+
+      async get_recent_agent_activity({ limit = 20 }) {
+        const { data, error } = await supabase
+          .from('agent_logs')
+          .select('id, agent, action, entity_type, entity_id, created_at, output')
+          .order('created_at', { ascending: false })
+          .limit(limit);
+        if (error) throw new Error(error.message);
+        return { activity: data, count: data.length };
+      },
+
+      async get_pending_events({ limit = 50 }) {
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .eq('processed', false)
+          .order('created_at', { ascending: true })
+          .limit(limit);
+        if (error) throw new Error(error.message);
+        return { events: data, count: data.length };
+      },
+    };
+
+    async function executeTool(name, input) {
+      const fn = toolFunctions[name];
+      if (!fn) throw new Error(`Unknown tool: ${name}`);
+      return await fn(input);
+    }
+
+    // ==========================================================================
+    // SYSTEM PROMPT
+    // ==========================================================================
+    const SYSTEM_PROMPT = `You are a CRM assistant for a headless, AI-orchestrated CRM system. Your job is to help sales reps manage their contacts, companies, deals, and tasks through natural language.
+
+## Your Capabilities
+
+You have access to tools that let you:
+- Search and retrieve companies and contacts
+- Get detailed briefs on any company or contact
+- Create new companies and contacts
+- Log interactions (calls, emails, meetings)
+- Create and manage tasks/follow-ups
+- Update scores on contacts and companies
+- Generate prioritized call lists
+- Create and manage agents that automate CRM tasks
+- View recent agent activity and pending events
+
+## How to Behave
+
+1. **Be conversational but efficient.** Acknowledge what you did, but don't be verbose.
+
+2. **Infer intent.** If someone says "add Mike from Acme", create both the contact and company. If they say "just talked to Sarah, she's interested", log a call with positive sentiment.
+
+3. **Be proactive about follow-ups.** If an interaction suggests a follow-up, offer to create a task.
+
+4. **Provide context.** When showing contacts or companies, include relevant scores and recent activity.
+
+5. **Handle ambiguity gracefully.** If you're not sure which contact they mean, search and confirm.
+
+## Response Format
+
+Keep responses short and actionable. Use this format:
+- For confirmations: "Created [thing]. [Optional: brief detail or follow-up question]"
+- For search results: Show a clean numbered list
+- For briefs: Organize into clear sections (overview, contacts, activity, tasks)
+
+## Agent Management
+
+You can create agents to automate tasks. When users ask to automate something:
+- "Create an agent that scores contacts when they reply" -> create event-triggered agent
+- "Show me what agents are running" -> list_agents
+- "What has been happening?" -> get_recent_agent_activity
+
+Agent trigger types:
+- manual: Only runs when explicitly called
+- event: Runs on events like "contact.created", "interaction.logged"
+- schedule: Runs on cron schedule (e.g., "0 8 * * *" for 8am daily)
+- chained: Runs after another agent completes`;
+
+    // ==========================================================================
+    // CHAT LOGIC
+    // ==========================================================================
+    let conversationHistory = [];
+    let isProcessing = false;
+
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const statusEl = document.getElementById('status');
+
+    function addMessage(role, content, toolInfo = null) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'content';
+      contentDiv.textContent = content;
+      div.appendChild(contentDiv);
+
+      if (toolInfo) {
+        const toolDiv = document.createElement('div');
+        toolDiv.className = 'tool-call';
+        toolDiv.textContent = toolInfo;
+        div.appendChild(toolDiv);
+      }
+
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function showTyping() {
+      const div = document.createElement('div');
+      div.className = 'message assistant';
+      div.id = 'typing';
+      div.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function hideTyping() {
+      const el = document.getElementById('typing');
+      if (el) el.remove();
+    }
+
+    async function chat(userMessage) {
+      if (!userMessage.trim() || isProcessing) return;
+
+      isProcessing = true;
+      inputEl.disabled = true;
+      sendBtn.disabled = true;
+      inputEl.value = '';
+
+      addMessage('user', userMessage);
+      conversationHistory.push({ role: 'user', content: userMessage });
+
+      showTyping();
+
+      try {
+        let response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': CONFIG.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            tools: toolDefinitions,
+            messages: conversationHistory,
+          }),
+        });
+
+        let result = await response.json();
+
+        if (result.error) {
+          throw new Error(result.error.message);
+        }
+
+        while (result.stop_reason === 'tool_use') {
+          const assistantMessage = { role: 'assistant', content: result.content };
+          conversationHistory.push(assistantMessage);
+
+          const toolResults = [];
+          for (const block of result.content) {
+            if (block.type === 'tool_use') {
+              hideTyping();
+              showTyping();
+
+              try {
+                const toolResult = await executeTool(block.name, block.input);
+                toolResults.push({
+                  type: 'tool_result',
+                  tool_use_id: block.id,
+                  content: JSON.stringify(toolResult),
+                });
+              } catch (error) {
+                toolResults.push({
+                  type: 'tool_result',
+                  tool_use_id: block.id,
+                  content: JSON.stringify({ error: error.message }),
+                  is_error: true,
+                });
+              }
+            }
+          }
+
+          conversationHistory.push({ role: 'user', content: toolResults });
+
+          response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': CONFIG.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 4096,
+              system: SYSTEM_PROMPT,
+              tools: toolDefinitions,
+              messages: conversationHistory,
+            }),
+          });
+
+          result = await response.json();
+
+          if (result.error) {
+            throw new Error(result.error.message);
+          }
+        }
+
+        hideTyping();
+
+        const finalText = result.content
+          .filter(block => block.type === 'text')
+          .map(block => block.text)
+          .join('\n');
+
+        conversationHistory.push({ role: 'assistant', content: result.content });
+
+        addMessage('assistant', finalText);
+
+        refreshSidebar();
+
+      } catch (error) {
+        hideTyping();
+        addMessage('system', `Error: ${error.message}`);
+        console.error(error);
+      }
+
+      isProcessing = false;
+      inputEl.disabled = false;
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+
+    // ==========================================================================
+    // SIDEBAR
+    // ==========================================================================
+    async function refreshSidebar() {
+      // Recent contacts
+      try {
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, score, companies(name)')
+          .order('updated_at', { ascending: false })
+          .limit(5);
+
+        const contactsEl = document.getElementById('recent-contacts');
+        if (contacts && contacts.length > 0) {
+          contactsEl.innerHTML = contacts.map(c => `
+            <div class="sidebar-item">
+              <div class="name">${c.first_name} ${c.last_name || ''}<span class="score">${c.score || 0}</span></div>
+              <div class="meta">${c.companies?.name || 'No company'}</div>
+            </div>
+          `).join('');
+        } else {
+          contactsEl.innerHTML = '<div class="empty-state">No contacts yet</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load contacts:', e);
+      }
+
+      // Recent companies
+      try {
+        const { data: companies } = await supabase
+          .from('companies')
+          .select('id, name, industry, score')
+          .order('updated_at', { ascending: false })
+          .limit(5);
+
+        const companiesEl = document.getElementById('recent-companies');
+        if (companies && companies.length > 0) {
+          companiesEl.innerHTML = companies.map(c => `
+            <div class="sidebar-item">
+              <div class="name">${c.name}<span class="score">${c.score || 0}</span></div>
+              <div class="meta">${c.industry || 'No industry'}</div>
+            </div>
+          `).join('');
+        } else {
+          companiesEl.innerHTML = '<div class="empty-state">No companies yet</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load companies:', e);
+      }
+
+      // Open tasks
+      try {
+        const { data: tasks } = await supabase
+          .from('tasks')
+          .select('id, type, reason, priority, contacts(first_name, last_name)')
+          .is('completed_at', null)
+          .order('priority', { ascending: true })
+          .limit(5);
+
+        const tasksEl = document.getElementById('open-tasks');
+        if (tasks && tasks.length > 0) {
+          tasksEl.innerHTML = tasks.map(t => `
+            <div class="sidebar-item">
+              <div class="name">${t.type}: ${(t.reason || 'No reason').substring(0, 30)}...</div>
+              <div class="meta">${t.contacts ? `${t.contacts.first_name} ${t.contacts.last_name || ''}` : 'No contact'} | P${t.priority}</div>
+            </div>
+          `).join('');
+        } else {
+          tasksEl.innerHTML = '<div class="empty-state">No open tasks</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load tasks:', e);
+      }
+
+      // Agents
+      try {
+        const { data: agents } = await supabase
+          .from('agent_configs')
+          .select('id, name, description, is_enabled, trigger_type, run_count')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        const agentsEl = document.getElementById('agents-list');
+        if (agents && agents.length > 0) {
+          agentsEl.innerHTML = agents.map(a => `
+            <div class="sidebar-item">
+              <div class="name">${a.name}<span class="badge ${a.is_enabled ? 'enabled' : 'disabled'}">${a.is_enabled ? 'ON' : 'OFF'}</span><span class="badge ${a.trigger_type}">${a.trigger_type}</span></div>
+              <div class="meta">${(a.description || 'No description').substring(0, 40)}...</div>
+            </div>
+          `).join('');
+        } else {
+          agentsEl.innerHTML = '<div class="empty-state">No agents configured yet. Try "create an agent that..."</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load agents:', e);
+      }
+
+      // Agent activity
+      try {
+        const { data: activity } = await supabase
+          .from('agent_logs')
+          .select('id, agent, action, entity_type, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        const activityEl = document.getElementById('agent-activity');
+        if (activity && activity.length > 0) {
+          activityEl.innerHTML = activity.map(a => {
+            const time = new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `
+              <div class="sidebar-item">
+                <div class="name">${a.action}</div>
+                <div class="meta">${a.agent} | ${a.entity_type || 'system'} | ${time}</div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          activityEl.innerHTML = '<div class="empty-state">No recent activity</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load activity:', e);
+      }
+
+      // Pending events
+      try {
+        const { data: events } = await supabase
+          .from('events')
+          .select('id, event_type, entity_type, created_at')
+          .eq('processed', false)
+          .order('created_at', { ascending: true })
+          .limit(5);
+
+        const eventsEl = document.getElementById('pending-events');
+        if (events && events.length > 0) {
+          eventsEl.innerHTML = events.map(e => {
+            const time = new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `
+              <div class="sidebar-item">
+                <div class="name">${e.event_type}</div>
+                <div class="meta">${e.entity_type} | ${time}</div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          eventsEl.innerHTML = '<div class="empty-state">No pending events</div>';
+        }
+      } catch (e) {
+        console.error('Failed to load events:', e);
+      }
+    }
+
+    // ==========================================================================
+    // TABS
+    // ==========================================================================
+    function initTabs() {
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+        });
+      });
+    }
+
+    // ==========================================================================
+    // INIT
+    // ==========================================================================
+    async function init() {
+      try {
+        const { error } = await supabase.from('companies').select('id').limit(1);
+        if (error) throw error;
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status connected';
+      } catch (e) {
+        statusEl.textContent = 'Connection Error';
+        statusEl.className = 'status error';
+        console.error('Supabase connection error:', e);
+      }
+
+      initTabs();
+      await refreshSidebar();
+
+      sendBtn.addEventListener('click', () => chat(inputEl.value));
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          chat(inputEl.value);
+        }
+      });
+
+      inputEl.focus();
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,8 +1,18 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from project root FIRST
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// Now import everything else (after env is loaded)
 import * as readline from 'readline';
 import Anthropic from '@anthropic-ai/sdk';
-import { toolDefinitions, executeTool } from './tools.js';
-import { SYSTEM_PROMPT, GREETING } from './prompts.js';
+
+// Dynamic import for tools (which depends on supabase, which needs env vars)
+const { toolDefinitions, executeTool } = await import('./tools.js');
+const { SYSTEM_PROMPT, GREETING } = await import('./prompts.js');
 
 // Verify environment
 if (!process.env.ANTHROPIC_API_KEY) {
