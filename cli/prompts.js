@@ -10,6 +10,9 @@ You have access to tools that let you:
 - Create and manage tasks/follow-ups
 - Update scores on contacts and companies
 - Generate prioritized call lists
+- Create custom fields to track new data points (like "deal stage", "product interest", etc.)
+- Create and manage agents that automate CRM tasks
+- View recent agent activity and pending events
 
 ## How to Behave
 
@@ -58,6 +61,27 @@ B2B SaaS | 51-200 employees | acme.com
 
 **Open Tasks:**
 - Follow up on pricing (due: Jan 8)
+
+## Custom Fields
+
+When users want to track new data points, use create_custom_field:
+- "I want to track deal stage" → create select field on contacts with options
+- "Add a product interest field" → create multi_select or text field
+
+Then set values with set_custom_field_value.
+
+## Agent Management
+
+You can create agents to automate tasks. When users ask to automate something:
+- "Create an agent that scores contacts when they reply" → create event-triggered agent
+- "Show me what agents are running" → list_agents
+- "What has been happening?" → get_recent_agent_activity
+
+Agent trigger types:
+- manual: Only runs when explicitly called
+- event: Runs on events like "contact.created", "interaction.logged"
+- schedule: Runs on cron schedule
+- chained: Runs after another agent completes
 `;
 
 export const GREETING = `CRM Assistant ready. Type a command or question, or "exit" to quit.
@@ -67,4 +91,7 @@ Examples:
   "add contact John Smith at TechStart, john@techstart.com"
   "who should I call today?"
   "brief me on TechStart"
+  "I want to track deal stage on contacts"
+  "create an agent that bumps score when we log a positive call"
+  "show me recent agent activity"
 `;

@@ -192,6 +192,154 @@ export const toolDefinitions = [
       },
     },
   },
+  // Custom Fields
+  {
+    name: 'create_custom_field',
+    description: 'Create a new custom field that can be tracked on contacts, companies, or deals. Use this when users want to track new data points.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', description: 'Entity type: contact, company, or deal' },
+        field_name: { type: 'string', description: 'Internal field name (will be snake_cased)' },
+        field_label: { type: 'string', description: 'Display label for the field' },
+        field_type: { type: 'string', description: 'Field type: text, number, date, boolean, select, multi_select, url, email, phone' },
+        description: { type: 'string', description: 'Help text describing what this field is for' },
+        options: { type: 'array', items: { type: 'string' }, description: 'Options for select/multi_select fields' },
+        default_value: { type: 'string', description: 'Default value for new records' },
+        is_required: { type: 'boolean', description: 'Whether this field is required' },
+      },
+      required: ['entity_type', 'field_name', 'field_type'],
+    },
+  },
+  {
+    name: 'set_custom_field_value',
+    description: 'Set the value of a custom field on a specific contact, company, or deal',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', description: 'Entity type: contact, company, or deal' },
+        entity_id: { type: 'string', description: 'UUID of the entity' },
+        entity_name: { type: 'string', description: 'Name of the entity (used if entity_id not provided)' },
+        field_name: { type: 'string', description: 'Name of the custom field' },
+        value: { description: 'Value to set (type depends on field type)' },
+      },
+      required: ['entity_type', 'field_name', 'value'],
+    },
+  },
+  {
+    name: 'get_custom_fields',
+    description: 'List all custom fields defined for an entity type',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', description: 'Entity type: contact, company, or deal' },
+      },
+      required: ['entity_type'],
+    },
+  },
+  {
+    name: 'list_custom_field_values',
+    description: 'Get all custom field values for a specific entity',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', description: 'Entity type: contact, company, or deal' },
+        entity_id: { type: 'string', description: 'UUID of the entity' },
+      },
+      required: ['entity_type', 'entity_id'],
+    },
+  },
+  // Agent Management
+  {
+    name: 'list_agents',
+    description: 'List all configured agents in the system',
+    input_schema: {
+      type: 'object',
+      properties: {
+        include_disabled: { type: 'boolean', description: 'Include disabled agents (default false)' },
+      },
+    },
+  },
+  {
+    name: 'get_agent_details',
+    description: 'Get full details about a specific agent including recent runs',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'UUID of the agent' },
+        agent_name: { type: 'string', description: 'Name of the agent (used if agent_id not provided)' },
+      },
+    },
+  },
+  {
+    name: 'create_agent',
+    description: 'Create a new agent configuration. Agents can be triggered manually, by events, on schedule, or chained after other agents.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the agent' },
+        description: { type: 'string', description: 'What this agent does' },
+        trigger_type: { type: 'string', description: 'Trigger type: manual, event, schedule, or chained' },
+        trigger_config: {
+          type: 'object',
+          description: 'Trigger configuration. For event: {events: ["contact.created"]}. For schedule: {cron: "0 8 * * *"}. For chained: {after_agent: "uuid"}',
+        },
+        conditions: {
+          type: 'array',
+          description: 'Conditions that must be met for agent to run. Array of {field, operator, value}',
+        },
+        actions: {
+          type: 'array',
+          description: 'Actions the agent performs. Array of action objects like {type: "update_field", target: "contact.score", operation: "increment", value: 10}',
+        },
+        allowed_tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of tool names this agent can use. Empty = all tools.',
+        },
+      },
+      required: ['name', 'description'],
+    },
+  },
+  {
+    name: 'update_agent',
+    description: 'Update an existing agent configuration',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'UUID of the agent' },
+        agent_name: { type: 'string', description: 'Name of the agent (used if agent_id not provided)' },
+        name: { type: 'string', description: 'New name' },
+        description: { type: 'string', description: 'New description' },
+        is_enabled: { type: 'boolean', description: 'Enable or disable the agent' },
+        trigger_type: { type: 'string', description: 'New trigger type' },
+        trigger_config: { type: 'object', description: 'New trigger configuration' },
+        conditions: { type: 'array', description: 'New conditions' },
+        actions: { type: 'array', description: 'New actions' },
+        allowed_tools: { type: 'array', items: { type: 'string' }, description: 'New allowed tools list' },
+      },
+    },
+  },
+  {
+    name: 'get_recent_agent_activity',
+    description: 'Get recent activity from all agents (from agent_logs)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max entries to return (default 20)' },
+      },
+    },
+  },
+  {
+    name: 'get_pending_events',
+    description: 'Get events that are waiting to be processed by agents',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max events to return (default 50)' },
+      },
+    },
+  },
 ];
 
 // ============================================================================
@@ -644,10 +792,285 @@ export async function list_open_tasks({ limit = 20 }) {
 }
 
 // ============================================================================
+// CUSTOM FIELDS
+// ============================================================================
+
+export async function create_custom_field({
+  entity_type,
+  field_name,
+  field_label,
+  field_type,
+  description,
+  options,
+  default_value,
+  is_required,
+}) {
+  const { data, error } = await supabase
+    .from('custom_fields')
+    .insert({
+      team_id: DEFAULT_TEAM_ID,
+      entity_type,
+      field_name: field_name.toLowerCase().replace(/\s+/g, '_'),
+      field_label: field_label || field_name,
+      field_type,
+      description,
+      options: options ? (Array.isArray(options) ? options : [options]) : null,
+      default_value,
+      is_required: is_required || false,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'create_custom_field', 'custom_field', data.id, { entity_type, field_name, field_type }, data);
+
+  return { custom_field: data, message: `Created custom field "${field_label || field_name}" on ${entity_type}s` };
+}
+
+export async function set_custom_field_value({ entity_type, entity_id, entity_name, field_name, value }) {
+  // Resolve entity ID if name provided
+  let resolvedEntityId = entity_id;
+  if (!resolvedEntityId && entity_name) {
+    const table = entity_type === 'contact' ? 'contacts' : entity_type === 'company' ? 'companies' : 'deals';
+    const searchField = entity_type === 'contact' ? 'first_name' : 'name';
+    const { data } = await supabase.from(table).select('id').ilike(searchField, `%${entity_name}%`).limit(1).single();
+    if (data) resolvedEntityId = data.id;
+  }
+
+  if (!resolvedEntityId) throw new Error(`${entity_type} not found`);
+
+  // Find the custom field
+  const { data: field, error: fieldError } = await supabase
+    .from('custom_fields')
+    .select('*')
+    .eq('entity_type', entity_type)
+    .eq('field_name', field_name.toLowerCase().replace(/\s+/g, '_'))
+    .single();
+
+  if (fieldError || !field) throw new Error(`Custom field "${field_name}" not found on ${entity_type}s`);
+
+  // Determine which value column to use
+  const valueColumn =
+    field.field_type === 'number' ? 'value_number' :
+    field.field_type === 'date' ? 'value_date' :
+    field.field_type === 'boolean' ? 'value_boolean' :
+    field.field_type === 'multi_select' ? 'value_json' :
+    'value_text';
+
+  const valueObj = { [valueColumn]: field.field_type === 'multi_select' ? value : value };
+
+  // Upsert the value
+  const { data, error } = await supabase
+    .from('custom_field_values')
+    .upsert({
+      custom_field_id: field.id,
+      entity_id: resolvedEntityId,
+      ...valueObj,
+    }, { onConflict: 'custom_field_id,entity_id' })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return { value: data, message: `Set ${field.field_label} = "${value}"` };
+}
+
+export async function get_custom_fields({ entity_type }) {
+  const { data, error } = await supabase
+    .from('custom_fields')
+    .select('*')
+    .eq('entity_type', entity_type)
+    .order('sort_order');
+
+  if (error) throw new Error(error.message);
+
+  return { fields: data, count: data.length };
+}
+
+export async function list_custom_field_values({ entity_type, entity_id }) {
+  // Get all custom fields for this entity type with their values for this entity
+  const { data: fields, error: fieldsError } = await supabase
+    .from('custom_fields')
+    .select(`
+      id, field_name, field_label, field_type,
+      custom_field_values!left(value_text, value_number, value_date, value_boolean, value_json)
+    `)
+    .eq('entity_type', entity_type)
+    .eq('custom_field_values.entity_id', entity_id);
+
+  if (fieldsError) throw new Error(fieldsError.message);
+
+  const result = (fields || []).map(f => {
+    const val = f.custom_field_values?.[0];
+    let value = null;
+    if (val) {
+      value = val.value_text || val.value_number || val.value_date || val.value_boolean || val.value_json;
+    }
+    return {
+      field_name: f.field_name,
+      field_label: f.field_label,
+      field_type: f.field_type,
+      value,
+    };
+  });
+
+  return { custom_fields: result };
+}
+
+// ============================================================================
+// AGENT MANAGEMENT
+// ============================================================================
+
+export async function list_agents({ include_disabled = false }) {
+  let query = supabase
+    .from('agent_configs')
+    .select('id, name, description, is_enabled, trigger_type, last_run_at, run_count, error_count')
+    .order('created_at', { ascending: false });
+
+  if (!include_disabled) {
+    query = query.eq('is_enabled', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return { agents: data, count: data.length };
+}
+
+export async function get_agent_details({ agent_id, agent_name }) {
+  let agent;
+  if (agent_id) {
+    const { data, error } = await supabase.from('agent_configs').select('*').eq('id', agent_id).single();
+    if (error) throw new Error(error.message);
+    agent = data;
+  } else if (agent_name) {
+    const { data, error } = await supabase.from('agent_configs').select('*').ilike('name', `%${agent_name}%`).single();
+    if (error) throw new Error(`Agent not found: ${agent_name}`);
+    agent = data;
+  } else {
+    throw new Error('Must provide agent_id or agent_name');
+  }
+
+  // Get recent runs
+  const { data: runs } = await supabase
+    .from('agent_runs')
+    .select('id, status, started_at, completed_at, entities_affected, tokens_used, error_message')
+    .eq('agent_config_id', agent.id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  return { agent, recent_runs: runs || [] };
+}
+
+export async function create_agent({
+  name,
+  description,
+  trigger_type,
+  trigger_config,
+  conditions,
+  actions,
+  allowed_tools,
+}) {
+  const { data, error } = await supabase
+    .from('agent_configs')
+    .insert({
+      team_id: DEFAULT_TEAM_ID,
+      created_by: DEFAULT_USER_ID,
+      name,
+      description,
+      trigger_type: trigger_type || 'manual',
+      trigger_config: trigger_config || {},
+      conditions: conditions || [],
+      actions: actions || [],
+      allowed_tools: allowed_tools || [],
+      is_enabled: true,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'create_agent', 'agent_config', data.id, { name, trigger_type }, data);
+
+  return { agent: data, message: `Created agent: ${name}` };
+}
+
+export async function update_agent({
+  agent_id,
+  agent_name,
+  name,
+  description,
+  is_enabled,
+  trigger_type,
+  trigger_config,
+  conditions,
+  actions,
+  allowed_tools,
+}) {
+  // Find agent
+  let resolvedId = agent_id;
+  if (!resolvedId && agent_name) {
+    const { data } = await supabase.from('agent_configs').select('id').ilike('name', `%${agent_name}%`).single();
+    if (data) resolvedId = data.id;
+  }
+  if (!resolvedId) throw new Error('Agent not found');
+
+  const updates = {};
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (is_enabled !== undefined) updates.is_enabled = is_enabled;
+  if (trigger_type !== undefined) updates.trigger_type = trigger_type;
+  if (trigger_config !== undefined) updates.trigger_config = trigger_config;
+  if (conditions !== undefined) updates.conditions = conditions;
+  if (actions !== undefined) updates.actions = actions;
+  if (allowed_tools !== undefined) updates.allowed_tools = allowed_tools;
+
+  const { data, error } = await supabase
+    .from('agent_configs')
+    .update(updates)
+    .eq('id', resolvedId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'update_agent', 'agent_config', resolvedId, updates, data);
+
+  return { agent: data, message: `Updated agent: ${data.name}` };
+}
+
+export async function get_recent_agent_activity({ limit = 20 }) {
+  const { data, error } = await supabase
+    .from('agent_logs')
+    .select('id, agent, action, entity_type, entity_id, created_at, output')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+
+  return { activity: data, count: data.length };
+}
+
+export async function get_pending_events({ limit = 50 }) {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('processed', false)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+
+  return { events: data, count: data.length };
+}
+
+// ============================================================================
 // TOOL DISPATCHER
 // ============================================================================
 
 const toolFunctions = {
+  // CRM operations
   search_companies,
   search_contacts,
   get_company_brief,
@@ -660,6 +1083,18 @@ const toolFunctions = {
   update_score,
   complete_task,
   list_open_tasks,
+  // Custom fields
+  create_custom_field,
+  set_custom_field_value,
+  get_custom_fields,
+  list_custom_field_values,
+  // Agent management
+  list_agents,
+  get_agent_details,
+  create_agent,
+  update_agent,
+  get_recent_agent_activity,
+  get_pending_events,
 };
 
 export async function executeTool(name, input) {
