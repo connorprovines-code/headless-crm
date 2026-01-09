@@ -1066,6 +1066,220 @@ export async function get_pending_events({ limit = 50 }) {
 }
 
 // ============================================================================
+// WORKFLOW HELPER TOOLS
+// ============================================================================
+
+export async function get_contact({ contact_id }) {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*, companies(id, name, domain)')
+    .eq('id', contact_id)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function update_contact({ contact_id, ...updates }) {
+  const { data, error } = await supabase
+    .from('contacts')
+    .update(updates)
+    .eq('id', contact_id)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function upsert_company({ domain, name, industry, employee_count, enrichment_data }) {
+  // Try to find existing company by domain
+  let company;
+  if (domain) {
+    const { data: existing } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('domain', domain)
+      .single();
+
+    if (existing) {
+      // Update existing
+      const { data, error } = await supabase
+        .from('companies')
+        .update({
+          name: name || existing.name,
+          industry: industry || existing.industry,
+          employee_count: employee_count || existing.employee_count,
+          enrichment_data: enrichment_data || existing.enrichment_data,
+          enrichment_status: 'complete',
+          last_enriched_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    }
+  }
+
+  // Create new company
+  const { data, error } = await supabase
+    .from('companies')
+    .insert({
+      team_id: DEFAULT_TEAM_ID,
+      owner_id: DEFAULT_USER_ID,
+      domain,
+      name,
+      industry,
+      employee_count,
+      enrichment_data,
+      enrichment_status: 'complete',
+      last_enriched_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function normalize_contact({ contact_id }) {
+  const { data: contact, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('id', contact_id)
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  // Normalize data
+  const normalized = {
+    ...contact,
+    email: contact.email?.toLowerCase().trim(),
+    first_name: contact.first_name?.trim(),
+    last_name: contact.last_name?.trim(),
+  };
+
+  return normalized;
+}
+
+export async function classify_email({ email }) {
+  if (!email) return { is_personal: true, domain: null };
+
+  const domain = email.split('@')[1]?.toLowerCase();
+
+  // Common personal email domains
+  const personalDomains = [
+    'gmail.com', 'googlemail.com',
+    'yahoo.com', 'yahoo.co.uk',
+    'hotmail.com', 'outlook.com', 'live.com', 'msn.com',
+    'icloud.com', 'me.com', 'mac.com',
+    'aol.com',
+    'protonmail.com', 'proton.me',
+    'mail.com', 'email.com',
+    'yandex.com', 'yandex.ru',
+  ];
+
+  const isPersonal = personalDomains.includes(domain);
+
+  return {
+    is_personal: isPersonal,
+    is_company: !isPersonal,
+    domain,
+    email,
+  };
+}
+
+export async function extract_domain({ email }) {
+  if (!email) return { domain: null };
+
+  const domain = email.split('@')[1]?.toLowerCase();
+  return { domain, email };
+}
+
+export async function get_product_context({ is_default }) {
+  let query = supabase
+    .from('product_context')
+    .select('*')
+    .eq('team_id', DEFAULT_TEAM_ID)
+    .eq('is_active', true);
+
+  if (is_default) {
+    query = query.eq('is_default', true);
+  }
+
+  const { data, error } = await query.limit(1).single();
+
+  if (error) {
+    // Return empty context if none configured
+    return {
+      name: 'Default Product',
+      description: 'No product context configured',
+      value_proposition: '',
+      ideal_customer: '',
+    };
+  }
+
+  return data;
+}
+
+export async function add_contact_note({ contact_id, note, note_type }) {
+  // Add as an interaction of type 'note'
+  const { data, error } = await supabase
+    .from('interactions')
+    .insert({
+      team_id: DEFAULT_TEAM_ID,
+      user_id: DEFAULT_USER_ID,
+      contact_id,
+      type: 'note',
+      content: note,
+      subject: note_type || 'Note',
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function get_scoring_rules({ is_active }) {
+  // For now, return default scoring rules
+  // This can be expanded to fetch from a scoring_rules table
+  return {
+    icp_factors: [
+      { field: 'title', contains: ['VP', 'Director', 'Head of', 'Manager'], points: 10 },
+      { field: 'title', contains: ['CEO', 'CTO', 'CFO', 'Founder'], points: 15 },
+    ],
+    engagement_factors: [
+      { type: 'meeting', points: 20 },
+      { type: 'call', points: 10 },
+      { type: 'email_received', points: 5 },
+    ],
+    company_factors: [
+      { field: 'employee_count', min: 50, max: 500, points: 15 },
+      { field: 'employee_count', min: 500, points: 10 },
+    ],
+  };
+}
+
+export async function send_notification({ channel, template, data }) {
+  // Log notification (actual sending would integrate with Slack/email APIs)
+  console.log(`[Notification] ${channel}: ${template}`, data);
+
+  await supabase.from('agent_logs').insert({
+    team_id: DEFAULT_TEAM_ID,
+    agent: 'notification_agent',
+    action: `send_${channel}_${template}`,
+    entity_type: 'notification',
+    input: { channel, template, data },
+    output: { sent: true, timestamp: new Date().toISOString() },
+  });
+
+  return { success: true, channel, template, data };
+}
+
+// ============================================================================
 // TOOL DISPATCHER
 // ============================================================================
 
@@ -1095,6 +1309,17 @@ const toolFunctions = {
   update_agent,
   get_recent_agent_activity,
   get_pending_events,
+  // Workflow helpers
+  get_contact,
+  update_contact,
+  upsert_company,
+  normalize_contact,
+  classify_email,
+  extract_domain,
+  get_product_context,
+  add_contact_note,
+  get_scoring_rules,
+  send_notification,
 };
 
 export async function executeTool(name, input) {
