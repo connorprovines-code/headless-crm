@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Headless CRM</title>
-  <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -416,44 +415,33 @@
 
   <script>
     // ==========================================================================
-    // CONFIGURATION - Load from config.js or prompt user
+    // CONFIGURATION
+    // For GitHub: These are loaded from localStorage. On first run, you'll be prompted.
+    // For local dev: Edit these values directly (this file is .gitignored locally)
     // ==========================================================================
-    let CONFIG = {
-      SUPABASE_URL: '',
-      SUPABASE_KEY: '',
-      ANTHROPIC_API_KEY: '',
+    const CONFIG = {
+      // EDIT THESE VALUES FOR LOCAL DEVELOPMENT:
+      SUPABASE_URL: localStorage.getItem('CRM_SUPABASE_URL') || '',
+      SUPABASE_KEY: localStorage.getItem('CRM_SUPABASE_KEY') || '',
+      ANTHROPIC_API_KEY: localStorage.getItem('CRM_ANTHROPIC_API_KEY') || '',
     };
 
-    // Try to load from config.js (create this file locally, it's gitignored)
-    try {
-      const configScript = document.querySelector('script[src="config.js"]');
-      if (window.CRM_CONFIG) {
-        CONFIG = { ...CONFIG, ...window.CRM_CONFIG };
-      }
-    } catch (e) {}
-
-    // If no config, check localStorage
-    if (!CONFIG.SUPABASE_URL) {
-      CONFIG.SUPABASE_URL = localStorage.getItem('CRM_SUPABASE_URL') || '';
-      CONFIG.SUPABASE_KEY = localStorage.getItem('CRM_SUPABASE_KEY') || '';
-      CONFIG.ANTHROPIC_API_KEY = localStorage.getItem('CRM_ANTHROPIC_API_KEY') || '';
-    }
-
-    // If still no config, prompt user
+    // If no config in localStorage, prompt user on first run
     if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.ANTHROPIC_API_KEY) {
-      const setupConfig = () => {
-        CONFIG.SUPABASE_URL = prompt('Enter your Supabase URL:', CONFIG.SUPABASE_URL || 'https://xxx.supabase.co');
-        CONFIG.SUPABASE_KEY = prompt('Enter your Supabase Service Key:', CONFIG.SUPABASE_KEY);
-        CONFIG.ANTHROPIC_API_KEY = prompt('Enter your Anthropic API Key:', CONFIG.ANTHROPIC_API_KEY);
+      alert('First time setup: Please enter your API keys.');
+      const url = prompt('Supabase URL:', 'https://xxx.supabase.co');
+      const key = prompt('Supabase Service Key:');
+      const anthropic = prompt('Anthropic API Key:');
 
-        if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_KEY && CONFIG.ANTHROPIC_API_KEY) {
-          localStorage.setItem('CRM_SUPABASE_URL', CONFIG.SUPABASE_URL);
-          localStorage.setItem('CRM_SUPABASE_KEY', CONFIG.SUPABASE_KEY);
-          localStorage.setItem('CRM_ANTHROPIC_API_KEY', CONFIG.ANTHROPIC_API_KEY);
-          location.reload();
-        }
-      };
-      setupConfig();
+      if (url && key && anthropic) {
+        localStorage.setItem('CRM_SUPABASE_URL', url);
+        localStorage.setItem('CRM_SUPABASE_KEY', key);
+        localStorage.setItem('CRM_ANTHROPIC_API_KEY', anthropic);
+        location.reload();
+      } else {
+        document.body.innerHTML = '<div style="padding:40px;text-align:center;"><h1>Configuration Required</h1><p>Refresh the page and enter your API keys.</p></div>';
+        throw new Error('Configuration required');
+      }
     }
 
     // ==========================================================================
