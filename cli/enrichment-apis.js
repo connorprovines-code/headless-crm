@@ -12,13 +12,21 @@ import { supabase, DEFAULT_TEAM_ID } from './supabase.js';
 // ============================================================================
 
 async function getCredentials(integrationName) {
-  const { data, error } = await supabase
+  // Build query - handle teamless mode
+  let query = supabase
     .from('integrations')
     .select('credentials')
-    .eq('team_id', DEFAULT_TEAM_ID)
-    .eq('integration_name', integrationName)
-    .eq('is_active', true)
-    .single();
+    .eq('name', integrationName)
+    .eq('is_enabled', true);
+
+  // Only filter by team_id if we have one
+  if (DEFAULT_TEAM_ID) {
+    query = query.eq('team_id', DEFAULT_TEAM_ID);
+  } else {
+    query = query.is('team_id', null);
+  }
+
+  const { data, error } = await query.single();
 
   if (error || !data) {
     throw new Error(`No active ${integrationName} integration found. Please configure API credentials.`);
@@ -32,6 +40,9 @@ async function getCredentials(integrationName) {
 // ============================================================================
 
 async function checkRateLimit(integrationName) {
+  // Skip rate limiting in teamless mode
+  if (!DEFAULT_TEAM_ID) return true;
+
   const { data, error } = await supabase.rpc('check_rate_limit', {
     p_team_id: DEFAULT_TEAM_ID,
     p_integration_name: integrationName
@@ -46,6 +57,9 @@ async function checkRateLimit(integrationName) {
 }
 
 async function incrementRateLimit(integrationName, isError = false) {
+  // Skip rate limiting in teamless mode
+  if (!DEFAULT_TEAM_ID) return;
+
   await supabase.rpc('increment_rate_limit', {
     p_team_id: DEFAULT_TEAM_ID,
     p_integration_name: integrationName,
