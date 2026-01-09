@@ -251,11 +251,12 @@ export async function verify_email_hunter({ email }) {
 }
 
 // ============================================================================
-// APOLLO.IO
+// APOLLO.IO (DISABLED - requires paid subscription for API access)
 // ============================================================================
 
 /**
  * Enrich person via Apollo
+ * NOTE: Apollo requires a paid subscription for API access. Currently disabled.
  *
  * @param {Object} params
  * @param {string} params.email - Email address
@@ -264,170 +265,30 @@ export async function verify_email_hunter({ email }) {
  * @param {string} params.domain - Company domain
  */
 export async function enrich_person_apollo({ email, first_name, last_name, domain }) {
-  const integrationName = 'apollo_enrichment';
+  // Apollo API disabled - requires paid subscription
+  return {
+    success: false,
+    error: 'Apollo API disabled - requires paid subscription',
+    disabled: true
+  };
 
-  const canProceed = await checkRateLimit(integrationName);
-  if (!canProceed) {
-    return { success: false, error: 'Rate limit exceeded for Apollo', rate_limited: true };
-  }
-
-  try {
-    const credentials = await getCredentials(integrationName);
-    const apiKey = credentials.api_key;
-
-    // Build query params for matching
-    const params = new URLSearchParams();
-    if (email) params.append('email', email);
-    if (first_name) params.append('first_name', first_name);
-    if (last_name) params.append('last_name', last_name);
-    if (domain) params.append('domain', domain);
-
-    const response = await fetch(`https://api.apollo.io/api/v1/people/match?${params}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-    });
-
-    await incrementRateLimit(integrationName, !response.ok);
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Apollo API error: ${response.status}`,
-        status: response.status
-      };
-    }
-
-    const data = await response.json();
-    const person = data.person;
-
-    if (!person) {
-      return { success: true, data: null, message: 'No match found' };
-    }
-
-    return {
-      success: true,
-      data: {
-        id: person.id,
-        first_name: person.first_name,
-        last_name: person.last_name,
-        name: person.name,
-        title: person.title,
-        headline: person.headline,
-        email: person.email,
-        email_status: person.email_status,
-        linkedin_url: person.linkedin_url,
-        twitter_url: person.twitter_url,
-        github_url: person.github_url,
-        photo_url: person.photo_url,
-        city: person.city,
-        state: person.state,
-        country: person.country,
-        seniority: person.seniority,
-        departments: person.departments,
-        employment_history: person.employment_history,
-        organization: person.organization ? {
-          id: person.organization.id,
-          name: person.organization.name,
-          domain: person.organization.primary_domain,
-          industry: person.organization.industry,
-          employee_count: person.organization.estimated_num_employees,
-          founded_year: person.organization.founded_year,
-        } : null,
-      },
-      raw: data,
-    };
-  } catch (error) {
-    await incrementRateLimit(integrationName, true);
-    return { success: false, error: error.message };
-  }
 }
 
 /**
  * Enrich company/organization via Apollo
+ * NOTE: Apollo requires a paid subscription for API access. Currently disabled.
  *
  * @param {Object} params
  * @param {string} params.domain - Company domain
  * @param {string} params.name - Company name (optional)
  */
 export async function enrich_company_apollo({ domain, name }) {
-  const integrationName = 'apollo_enrichment';
-
-  const canProceed = await checkRateLimit(integrationName);
-  if (!canProceed) {
-    return { success: false, error: 'Rate limit exceeded for Apollo', rate_limited: true };
-  }
-
-  try {
-    const credentials = await getCredentials(integrationName);
-    const apiKey = credentials.api_key;
-
-    const params = new URLSearchParams();
-    if (domain) params.append('domain', domain);
-    if (name) params.append('name', name);
-
-    const response = await fetch(`https://api.apollo.io/api/v1/organizations/enrich?${params}`, {
-      method: 'GET',
-      headers: {
-        'x-api-key': apiKey,
-      },
-    });
-
-    await incrementRateLimit(integrationName, !response.ok);
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Apollo API error: ${response.status}`,
-        status: response.status
-      };
-    }
-
-    const data = await response.json();
-    const org = data.organization;
-
-    if (!org) {
-      return { success: true, data: null, message: 'No match found' };
-    }
-
-    return {
-      success: true,
-      data: {
-        id: org.id,
-        name: org.name,
-        domain: org.primary_domain,
-        website_url: org.website_url,
-        linkedin_url: org.linkedin_url,
-        twitter_url: org.twitter_url,
-        facebook_url: org.facebook_url,
-        industry: org.industry,
-        industries: org.industries,
-        employee_count: org.estimated_num_employees,
-        employee_range: org.employee_count,
-        founded_year: org.founded_year,
-        annual_revenue: org.annual_revenue,
-        annual_revenue_printed: org.annual_revenue_printed,
-        total_funding: org.total_funding,
-        total_funding_printed: org.total_funding_printed,
-        latest_funding_round_date: org.latest_funding_round_date,
-        latest_funding_stage: org.latest_funding_stage,
-        phone: org.phone,
-        city: org.city,
-        state: org.state,
-        country: org.country,
-        keywords: org.keywords,
-        technologies: org.technologies,
-        short_description: org.short_description,
-        seo_description: org.seo_description,
-      },
-      raw: data,
-    };
-  } catch (error) {
-    await incrementRateLimit(integrationName, true);
-    return { success: false, error: error.message };
-  }
+  // Apollo API disabled - requires paid subscription
+  return {
+    success: false,
+    error: 'Apollo API disabled - requires paid subscription',
+    disabled: true
+  };
 }
 
 // ============================================================================
@@ -436,14 +297,15 @@ export async function enrich_company_apollo({ domain, name }) {
 
 /**
  * Scrape LinkedIn profile via Apify
- * Uses actor: LQQIXN9Othf8f7R5n
+ * Uses actor: apimaestro~linkedin-profile-posts
+ * Runs synchronously and returns dataset items directly
  *
  * @param {Object} params
  * @param {string} params.linkedin_url - LinkedIn profile URL
  */
 export async function scrape_linkedin_profile({ linkedin_url }) {
   const integrationName = 'apify';
-  const ACTOR_ID = 'LQQIXN9Othf8f7R5n';
+  const ACTOR_ID = 'apimaestro~linkedin-profile-posts';
 
   const canProceed = await checkRateLimit(integrationName);
   if (!canProceed) {
@@ -454,76 +316,31 @@ export async function scrape_linkedin_profile({ linkedin_url }) {
     const credentials = await getCredentials(integrationName);
     const token = credentials.token;
 
-    // Start the actor run
-    const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${token}`,
+    // Use the sync endpoint that returns dataset items directly
+    // This is cleaner than polling for completion
+    const response = await fetch(
+      `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${token}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: linkedin_url,
+          profileUrls: [linkedin_url],
         }),
       }
     );
 
-    if (!runResponse.ok) {
-      await incrementRateLimit(integrationName, true);
+    await incrementRateLimit(integrationName, !response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
       return {
         success: false,
-        error: `Apify API error: ${runResponse.status}`,
-        status: runResponse.status
+        error: `Apify API error: ${response.status} - ${errorText}`,
+        status: response.status
       };
     }
 
-    const runData = await runResponse.json();
-    const runId = runData.data?.id;
-
-    if (!runId) {
-      await incrementRateLimit(integrationName, true);
-      return { success: false, error: 'Failed to start Apify actor' };
-    }
-
-    // Poll for completion (max 60 seconds)
-    let attempts = 0;
-    const maxAttempts = 30;
-    let status = 'RUNNING';
-
-    while (status === 'RUNNING' && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
-
-      const statusResponse = await fetch(
-        `https://api.apify.com/v2/actor-runs/${runId}?token=${token}`
-      );
-
-      if (statusResponse.ok) {
-        const statusData = await statusResponse.json();
-        status = statusData.data?.status;
-      }
-
-      attempts++;
-    }
-
-    if (status !== 'SUCCEEDED') {
-      await incrementRateLimit(integrationName, true);
-      return {
-        success: false,
-        error: `Apify actor did not complete in time. Status: ${status}`,
-        run_id: runId
-      };
-    }
-
-    // Get the results
-    const datasetResponse = await fetch(
-      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${token}`
-    );
-
-    await incrementRateLimit(integrationName, !datasetResponse.ok);
-
-    if (!datasetResponse.ok) {
-      return { success: false, error: 'Failed to fetch Apify results' };
-    }
-
-    const items = await datasetResponse.json();
+    const items = await response.json();
     const profile = items[0];
 
     if (!profile) {
@@ -533,27 +350,28 @@ export async function scrape_linkedin_profile({ linkedin_url }) {
     return {
       success: true,
       data: {
-        name: profile.name,
+        name: profile.name || profile.fullName,
         headline: profile.headline,
-        summary: profile.summary,
+        summary: profile.summary || profile.about,
         location: profile.location,
-        connections: profile.connections,
-        profile_url: profile.profileUrl || linkedin_url,
-        profile_image: profile.profilePicture,
+        connections: profile.connections || profile.connectionsCount,
+        profile_url: profile.profileUrl || profile.url || linkedin_url,
+        profile_image: profile.profilePicture || profile.profilePictureUrl,
         experience: profile.experience?.map(exp => ({
           title: exp.title,
-          company: exp.company,
+          company: exp.company || exp.companyName,
           duration: exp.duration,
           description: exp.description,
         })),
         education: profile.education?.map(edu => ({
-          school: edu.school,
+          school: edu.school || edu.schoolName,
           degree: edu.degree,
-          field: edu.field,
+          field: edu.field || edu.fieldOfStudy,
           dates: edu.dates,
         })),
         skills: profile.skills,
         certifications: profile.certifications,
+        posts: profile.posts, // This actor also returns posts
       },
       raw: profile,
     };
