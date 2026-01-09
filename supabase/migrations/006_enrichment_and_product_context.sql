@@ -147,43 +147,33 @@ CREATE INDEX IF NOT EXISTS eq_priority_idx ON enrichment_queue(priority, schedul
 -- NEW INTEGRATION TEMPLATES
 -- ============================================================================
 
-INSERT INTO integration_templates (name, display_name, category, description, auth_type, auth_config, default_settings)
+INSERT INTO integration_templates (name, display_name, category, description, required_credentials, setup_instructions)
 VALUES
     ('peopledatalabs', 'People Data Labs', 'enrichment',
      'Person and company enrichment API. Find work emails, job titles, company info.',
-     'api_key',
-     '{"header_name": "X-Api-Key"}',
-     '{"base_url": "https://api.peopledatalabs.com/v5"}'),
+     '[{"key":"api_key","label":"API Key","type":"password"}]',
+     'Get your API key from peopledatalabs.com dashboard'),
 
     ('hunter', 'Hunter.io', 'enrichment',
      'Email finder and verifier. Find email addresses and verify deliverability.',
-     'api_key',
-     '{"query_param": "api_key"}',
-     '{"base_url": "https://api.hunter.io/v2"}'),
-
-    ('apollo_enrichment', 'Apollo (Enrichment)', 'enrichment',
-     'B2B contact and company enrichment. Job titles, company data, contact info.',
-     'api_key',
-     '{"header_name": "X-Api-Key"}',
-     '{"base_url": "https://api.apollo.io/v1"}'),
+     '[{"key":"api_key","label":"API Key","type":"password"}]',
+     'Get your API key from hunter.io/api'),
 
     ('apify', 'Apify', 'enrichment',
      'Web scraping platform. Used for LinkedIn profile scraping.',
-     'api_key',
-     '{"query_param": "token"}',
-     '{"base_url": "https://api.apify.com/v2", "linkedin_actor_id": "LQQIXN9Othf8f7R5n"}'),
+     '[{"key":"token","label":"API Token","type":"password"}]',
+     'Get your API token from console.apify.com/account/integrations'),
 
     ('perplexity', 'Perplexity AI', 'enrichment',
      'AI-powered research. Company research, news, competitive intelligence.',
-     'api_key',
-     '{"header_name": "Authorization", "prefix": "Bearer "}',
-     '{"base_url": "https://api.perplexity.ai", "model": "llama-3.1-sonar-small-128k-online"}')
+     '[{"key":"api_key","label":"API Key","type":"password"}]',
+     'Get your API key from perplexity.ai/settings/api')
 
 ON CONFLICT (name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     description = EXCLUDED.description,
-    auth_config = EXCLUDED.auth_config,
-    default_settings = EXCLUDED.default_settings;
+    required_credentials = EXCLUDED.required_credentials,
+    setup_instructions = EXCLUDED.setup_instructions;
 
 -- ============================================================================
 -- NEW TOOLS FOR ENRICHMENT
