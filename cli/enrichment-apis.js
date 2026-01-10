@@ -125,18 +125,26 @@ export async function enrich_person_pdl({ email, first_name, last_name, company,
 
     const data = await response.json();
 
-    // Extract key fields
+    // Extract key fields - PDL returns false for hidden/paywalled data instead of arrays
+    const personData = data.data || {};
+    const workEmail = typeof personData.work_email === 'string' ? personData.work_email : null;
+    const emails = Array.isArray(personData.emails) ? personData.emails : [];
+    const personalEmails = Array.isArray(personData.personal_emails) ? personData.personal_emails : [];
+    const phoneNumbers = Array.isArray(personData.phone_numbers) ? personData.phone_numbers : [];
+
     return {
       success: true,
       data: {
-        work_email: data.data?.work_email || data.data?.emails?.find(e => e.type === 'professional')?.address,
-        personal_email: data.data?.personal_emails?.[0],
-        linkedin_url: data.data?.linkedin_url,
-        title: data.data?.job_title,
-        company: data.data?.job_company_name,
-        company_domain: data.data?.job_company_website,
-        location: data.data?.location_name,
-        phone: data.data?.phone_numbers?.[0],
+        work_email: workEmail || emails.find(e => e.type === 'professional')?.address || null,
+        personal_email: personalEmails[0] || null,
+        linkedin_url: typeof personData.linkedin_url === 'string' ? personData.linkedin_url : null,
+        title: personData.job_title || null,
+        company: personData.job_company_name || null,
+        company_domain: personData.job_company_website || null,
+        location: typeof personData.location_name === 'string' ? personData.location_name : null,
+        phone: phoneNumbers[0] || null,
+        industry: personData.industry || null,
+        skills: Array.isArray(personData.skills) ? personData.skills : [],
       },
       raw: data,
     };
@@ -336,7 +344,7 @@ export async function scrape_linkedin_profile({ linkedin_url, limit = 10 }) {
     // Use the sync endpoint that returns dataset items directly
     // limit=10 (default) costs ~5c vs 50c for 100 posts
     const response = await fetch(
-      \`https://api.apify.com/v2/acts/\${ACTOR_ID}/run-sync-get-dataset-items?token=\${token}\`,
+      `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${token}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
