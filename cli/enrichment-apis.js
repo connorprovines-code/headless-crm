@@ -305,19 +305,16 @@ export async function enrich_company_apollo({ domain, name }) {
   };
 }
 
-// ============================================================================
-// APIFY (LinkedIn Scraping)
-// ============================================================================
-
 /**
- * Scrape LinkedIn profile via Apify
+ * Scrape LinkedIn profile posts via Apify
  * Uses actor: apimaestro~linkedin-profile-posts
  * Runs synchronously and returns dataset items directly
  *
  * @param {Object} params
- * @param {string} params.linkedin_url - LinkedIn profile URL
+ * @param {string} params.linkedin_url - LinkedIn profile URL or username
+ * @param {number} params.limit - Max posts to retrieve (1-100, default 10). Lower = cheaper (~5c vs 50c).
  */
-export async function scrape_linkedin_profile({ linkedin_url }) {
+export async function scrape_linkedin_profile({ linkedin_url, limit = 10 }) {
   const integrationName = 'apify';
   const ACTOR_ID = 'apimaestro~linkedin-profile-posts';
 
@@ -330,21 +327,25 @@ export async function scrape_linkedin_profile({ linkedin_url }) {
     const credentials = await getCredentials(integrationName);
     const token = credentials.token;
 
+    // Extract username from URL if full URL provided
+    let username = linkedin_url;
+    if (linkedin_url.includes('linkedin.com/in/')) {
+      username = linkedin_url.split('linkedin.com/in/')[1].replace(/\/$/, '');
+    }
+
     // Use the sync endpoint that returns dataset items directly
-    // This is cleaner than polling for completion
+    // limit=10 (default) costs ~5c vs 50c for 100 posts
     const response = await fetch(
-      `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${token}`,
+      \`https://api.apify.com/v2/acts/\${ACTOR_ID}/run-sync-get-dataset-items?token=\${token}\`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          profileUrls: [linkedin_url],
+          username: username,
+          limit: Math.min(Math.max(limit, 1), 100), // Clamp 1-100
         }),
       }
     );
-
-    await incrementRateLimit(integrationName, !response.ok);
-
     if (!response.ok) {
       const errorText = await response.text();
       return {
@@ -405,9 +406,10 @@ export async function scrape_linkedin_profile({ linkedin_url }) {
  * @param {Object} params
  * @param {string} params.company_name - Company name
  * @param {string} params.domain - Company domain (optional, helps with accuracy)
- * @param {string[]} params.focus_areas - Areas to focus on (e.g., ["recent_news", "competitors"])
+ * @param {string} params.depth - Research depth: "light" (3 results) or "deep" (10 results, full analysis)
+ * @param {string[]} params.focus_areas - Areas to focus on (overrides depth defaults)
  */
-export async function research_company_perplexity({ company_name, domain, focus_areas = [] }) {
+export async function research_company_perplexity({ company_name, domain, depth = 'light', focus_areas = [] }) {
   const integrationName = 'perplexity';
 
   const canProceed = await checkRateLimit(integrationName);
@@ -419,15 +421,19 @@ export async function research_company_perplexity({ company_name, domain, focus_
     const credentials = await getCredentials(integrationName);
     const apiKey = credentials.api_key;
 
+    // Depth-based defaults - controls cost/thoroughness
+    const isDeep = depth === 'deep';
+    const maxResults = isDeep ? 10 : 3;
+    const defaultFocusAreas = isDeep
+      ? ['company overview', 'recent news', 'funding rounds', 'competitors', 'key initiatives', 'leadership changes']
+      : ['company overview'];
+
     // Build the search query
     let query = `${company_name}`;
     if (domain) query += ` (${domain})`;
 
-    if (focus_areas.length > 0) {
-      query += ` - ${focus_areas.join(', ')}`;
-    } else {
-      query += ' - company overview, recent news, key initiatives, competitive landscape';
-    }
+    const areas = focus_areas.length > 0 ? focus_areas : defaultFocusAreas;
+    query += ` - ${areas.join(', ')}`;
 
     const response = await fetch('https://api.perplexity.ai/search', {
       method: 'POST',
@@ -437,7 +443,7 @@ export async function research_company_perplexity({ company_name, domain, focus_
       },
       body: JSON.stringify({
         query,
-        max_results: 10,
+        max_results: maxResults,
         search_recency_filter: 'month', // Focus on recent info
       }),
     });
@@ -459,7 +465,8 @@ export async function research_company_perplexity({ company_name, domain, focus_
       data: {
         company_name,
         domain,
-        focus_areas,
+        depth,
+        focus_areas: areas,
         results: data.results?.map(r => ({
           title: r.title,
           url: r.url,

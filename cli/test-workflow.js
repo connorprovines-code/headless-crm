@@ -37,15 +37,15 @@ async function checkCredentials() {
   for (const name of integrations) {
     const { data } = await supabase
       .from('integrations')
-      .select('id, integration_name, is_active')
-      .eq('team_id', DEFAULT_TEAM_ID)
-      .eq('integration_name', name)
+      .select('id, name, is_enabled')
+      .is('team_id', null)
+      .eq('name', name)
       .single();
 
     results.push({
       integration: name,
       configured: !!data,
-      active: data?.is_active || false,
+      active: data?.is_enabled || false,
     });
   }
 
@@ -55,13 +55,12 @@ async function checkCredentials() {
   if (missing.length > 0) {
     console.log('\n[Warning] Missing integrations. To configure, run:');
     console.log(`
-INSERT INTO integrations (team_id, integration_name, credentials, is_active)
+INSERT INTO integrations (name, display_name, credentials, is_enabled)
 VALUES
-  ('${DEFAULT_TEAM_ID}', 'peopledatalabs', '{"api_key": "YOUR_KEY"}', true),
-  ('${DEFAULT_TEAM_ID}', 'hunter', '{"api_key": "YOUR_KEY"}', true),
-  ('${DEFAULT_TEAM_ID}', 'apollo_enrichment', '{"api_key": "YOUR_KEY"}', true),
-  ('${DEFAULT_TEAM_ID}', 'apify', '{"token": "YOUR_TOKEN"}', true),
-  ('${DEFAULT_TEAM_ID}', 'perplexity', '{"api_key": "YOUR_KEY"}', true);
+  ('peopledatalabs', 'People Data Labs', '{"api_key": "YOUR_KEY"}', true),
+  ('hunter', 'Hunter.io', '{"api_key": "YOUR_KEY"}', true),
+  ('apify', 'Apify', '{"token": "YOUR_TOKEN"}', true),
+  ('perplexity', 'Perplexity AI', '{"api_key": "YOUR_KEY"}', true);
     `);
   }
 

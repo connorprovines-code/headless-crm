@@ -1279,6 +1279,63 @@ export async function send_notification({ channel, template, data }) {
   return { success: true, channel, template, data };
 }
 
+export async function delete_contact({ contact_id, reason }) {
+  // Log before deleting
+  await logAgentAction('intake_agent', 'delete_contact', 'contact', contact_id, { reason }, { deleted: true });
+
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', contact_id);
+
+  if (error) throw new Error(error.message);
+
+  return { success: true, contact_id, reason };
+}
+
+export async function merge_contact_data({ existing_contact_id, new_contact_id, new_data }) {
+  // Get existing contact
+  const { data: existing, error: fetchError } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('id', existing_contact_id)
+    .single();
+
+  if (fetchError) throw new Error(fetchError.message);
+
+  // Merge: new data fills in blanks, doesn't overwrite existing
+  const merged = {
+    first_name: existing.first_name || new_data.first_name,
+    last_name: existing.last_name || new_data.last_name,
+    email: existing.email || new_data.email,
+    phone: existing.phone || new_data.phone,
+    title: existing.title || new_data.title,
+    linkedin_url: existing.linkedin_url || new_data.linkedin_url,
+    // Always update these if provided
+    last_contacted_at: new Date().toISOString(),
+  };
+
+  // Update existing contact
+  const { data: updated, error: updateError } = await supabase
+    .from('contacts')
+    .update(merged)
+    .eq('id', existing_contact_id)
+    .select()
+    .single();
+
+  if (updateError) throw new Error(updateError.message);
+
+  // Delete the duplicate new contact if different
+  if (new_contact_id && new_contact_id !== existing_contact_id) {
+    await supabase.from('contacts').delete().eq('id', new_contact_id);
+  }
+
+  await logAgentAction('intake_agent', 'merge_contact', 'contact', existing_contact_id,
+    { new_contact_id, new_data }, updated);
+
+  return { success: true, contact: updated, merged_from: new_contact_id };
+}
+
 // ============================================================================
 // TOOL DISPATCHER
 // ============================================================================
@@ -1320,6 +1377,8 @@ const toolFunctions = {
   add_contact_note,
   get_scoring_rules,
   send_notification,
+  delete_contact,
+  merge_contact_data,
 };
 
 export async function executeTool(name, input) {
