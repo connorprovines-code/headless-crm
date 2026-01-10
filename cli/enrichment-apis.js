@@ -313,6 +313,90 @@ export async function enrich_company_apollo({ domain, name }) {
   };
 }
 
+// ============================================================================
+// GENERECT (Email Finder - Pay per success)
+// ============================================================================
+
+/**
+ * Find and validate work email using Generect
+ * Takes first_name, last_name, domain and returns validated corporate email
+ * Cost: $0.03 per valid email found
+ *
+ * @param {Object} params
+ * @param {string} params.first_name - First name
+ * @param {string} params.last_name - Last name
+ * @param {string} params.domain - Company domain (required)
+ */
+export async function find_email_generect({ first_name, last_name, domain }) {
+  const integrationName = 'generect';
+
+  if (!domain) {
+    return { success: false, error: 'Domain is required for Generect email finder' };
+  }
+
+  const canProceed = await checkRateLimit(integrationName);
+  if (!canProceed) {
+    return { success: false, error: 'Rate limit exceeded for Generect', rate_limited: true };
+  }
+
+  try {
+    const credentials = await getCredentials(integrationName);
+    const apiKey = credentials.api_key;
+
+    const response = await fetch('https://api.generect.com/api/linkedin/email_finder/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Token ${apiKey}`,
+      },
+      body: JSON.stringify([{
+        first_name,
+        last_name,
+        domain,
+      }]),
+    });
+
+    await incrementRateLimit(integrationName, !response.ok);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Generect API error: ${response.status} - ${errorText}`,
+        status: response.status
+      };
+    }
+
+    const data = await response.json();
+    const result = data[0]; // API returns array
+
+    if (!result) {
+      return { success: false, error: 'No result returned from Generect' };
+    }
+
+    // Check if email was found and is valid
+    const isValid = result.result === 'valid' && result.exist === 'yes';
+
+    return {
+      success: isValid,
+      data: {
+        email: isValid ? result.valid_email : null,
+        is_valid: isValid,
+        result_status: result.result,
+        exists: result.exist,
+        catch_all: result.catch_all,
+        email_format: result.email_format,
+        mx_domain: result.mx_domain,
+        source: result.source,
+      },
+      raw: result,
+    };
+  } catch (error) {
+    await incrementRateLimit(integrationName, true);
+    return { success: false, error: error.message };
+  }
+}
+
 /**
  * Scrape LinkedIn profile posts via Apify
  * Uses actor: apimaestro~linkedin-profile-posts
@@ -503,6 +587,7 @@ export const enrichmentApis = {
   enrich_company_apollo,
   scrape_linkedin_profile,
   research_company_perplexity,
+  find_email_generect,
 };
 
 export default enrichmentApis;

@@ -6,26 +6,35 @@
  *
  * Trigger: intake.new_contact
  *
- * Enrichment Tiers:
- * - Deep (7-10): PDL + Hunter + Perplexity deep + LinkedIn + Apollo
- * - Light (5-6): Hunter + Perplexity light
+ * Work Email Flow:
+ * 1. Classify email (personal vs business)
+ * 2. If personal → PDL for company info (name, LinkedIn, title, industry)
+ * 3. If no work email yet → derive domain from company → Generect to find/validate email
+ *
+ * Enrichment Tiers (after initial score):
+ * - Deep (7-10): Perplexity deep + LinkedIn + full analysis
+ * - Light (5-6): Perplexity light
  * - None (0-4): Skip enrichment (save money)
  *
  * Approximate costs:
- * - Deep: ~20¢ per lead
- * - Light: ~3¢ per lead
- * - None: ~1¢ per lead (just AI scoring)
+ * - Deep: ~8-10¢ per lead (Generect $0.03 + Perplexity + LinkedIn)
+ * - Light: ~5¢ per lead (Generect $0.03 + Perplexity light)
+ * - None: ~4¢ per lead (Generect $0.03 + AI scoring only)
  */
 
 export const sdrAgent = {
   name: 'SDR Agent v2',
   slug: 'sdr_agent_v2',
-  description: 'Researcher + Scorer: ensures work email, scores lead, enriches based on tier, deep analysis for high-value, routes to Contact Agent',
+  description: 'Researcher + Scorer: ensures work email via Generect, scores lead, enriches based on tier, routes to Contact Agent',
   category: 'enrichment',
   trigger_event: 'intake.new_contact',
-  version: 2,
+  version: 3,
 
   steps: [
+    // =========================================================================
+    // PHASE 1: Load and Classify
+    // =========================================================================
+
     // Step 1: Load contact data
     {
       name: 'Load Contact',
@@ -52,10 +61,14 @@ export const sdrAgent = {
       output_variable: 'email_type',
     },
 
-    // Step 3: If personal email, run PDL to get work email
+    // =========================================================================
+    // PHASE 2: Get Company Info (PDL) - if personal email
+    // =========================================================================
+
+    // Step 3: If personal email, run PDL to get company info
     {
       name: 'PDL Enrichment',
-      description: 'Get work email and additional data from PDL',
+      description: 'Get company info, LinkedIn, title from PDL',
       step_order: 3,
       action_type: 'tool_call',
       action_config: {
@@ -74,21 +87,20 @@ export const sdrAgent = {
       ],
     },
 
-    // Step 4: Update contact with PDL data if found
+    // Step 4: Update contact with PDL data (company, title, linkedin - NOT work_email)
     {
       name: 'Update from PDL',
-      description: 'Store PDL enrichment data',
+      description: 'Store PDL enrichment data (company info)',
       step_order: 4,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
         input_mapping: {
           contact_id: '{{contact.id}}',
-          work_email: '{{pdl_data.data.work_email}}',
           personal_email: '{{contact.email}}',
           title: '{{pdl_data.data.title}}',
           linkedin_url: '{{pdl_data.data.linkedin_url}}',
-          phone: '{{pdl_data.data.phone}}',
+          company_name: '{{pdl_data.data.company}}',
         },
       },
       run_conditions: [
@@ -99,7 +111,7 @@ export const sdrAgent = {
     // Step 5: Reload contact with updated data
     {
       name: 'Reload Contact',
-      description: 'Get updated contact data',
+      description: 'Get updated contact data after PDL',
       step_order: 5,
       action_type: 'tool_call',
       action_config: {
@@ -109,26 +121,119 @@ export const sdrAgent = {
       output_variable: 'contact',
     },
 
-    // Step 6: Initial scoring (0-10)
+    // =========================================================================
+    // PHASE 3: Find Work Email (Generect) - if we have company info
+    // =========================================================================
+
+    // Step 6: Derive domain from company name using AI
+    {
+      name: 'Derive Company Domain',
+      description: 'Figure out company domain from company name',
+      step_order: 6,
+      action_type: 'ai_prompt',
+      action_config: {
+        prompt_template: `Given this company name, determine the most likely corporate email domain.
+
+Company Name: {{contact.company_name || pdl_data.data.company}}
+
+Rules:
+- Use the company's primary website domain
+- For well-known companies, use the standard domain (e.g., "Microsoft" → "microsoft.com")
+- For less known companies, make a reasonable guess based on the name
+- Remove spaces, use lowercase
+- Common patterns: companyname.com, company.com, thecompany.com
+
+Respond with JSON only:
+{"domain": "company.com", "confidence": "high|medium|low"}`,
+        output_type: 'json',
+        max_tokens: 100,
+      },
+      output_variable: 'derived_domain',
+      run_conditions: [
+        { field: '{{contact.work_email}}', operator: 'is_empty' },
+        { field: '{{contact.company_name || pdl_data.data.company}}', operator: 'is_not_empty' },
+      ],
+    },
+
+    // Step 7: Use Generect to find validated work email
+    {
+      name: 'Generect Email Finder',
+      description: 'Find and validate work email using Generect ($0.03/success)',
+      step_order: 7,
+      action_type: 'tool_call',
+      action_config: {
+        tool_name: 'find_email_generect',
+        input_mapping: {
+          first_name: '{{contact.first_name}}',
+          last_name: '{{contact.last_name}}',
+          domain: '{{derived_domain.domain}}',
+        },
+      },
+      output_variable: 'generect_result',
+      on_error: 'continue',
+      run_conditions: [
+        { field: '{{contact.work_email}}', operator: 'is_empty' },
+        { field: '{{derived_domain.domain}}', operator: 'is_not_empty' },
+      ],
+    },
+
+    // Step 8: Save work email from Generect
+    {
+      name: 'Save Work Email',
+      description: 'Store validated work email from Generect',
+      step_order: 8,
+      action_type: 'tool_call',
+      action_config: {
+        tool_name: 'update_contact',
+        input_mapping: {
+          contact_id: '{{contact.id}}',
+          work_email: '{{generect_result.data.email}}',
+          email_verified: true,
+        },
+      },
+      run_conditions: [
+        { field: '{{generect_result.success}}', operator: '==', value: true },
+      ],
+    },
+
+    // Step 9: Reload contact with work email
+    {
+      name: 'Reload with Work Email',
+      description: 'Get contact data with work email',
+      step_order: 9,
+      action_type: 'tool_call',
+      action_config: {
+        tool_name: 'get_contact',
+        input_mapping: { contact_id: '{{event.entity_id}}' },
+      },
+      output_variable: 'contact',
+    },
+
+    // =========================================================================
+    // PHASE 4: Initial Scoring
+    // =========================================================================
+
+    // Step 10: Initial scoring (0-10)
     {
       name: 'Initial Score',
       description: 'Calculate initial lead score based on available data',
-      step_order: 6,
+      step_order: 10,
       action_type: 'ai_prompt',
       action_config: {
         prompt_template: `Score this lead from 0-10 based on available information.
 
 **Contact:**
 Name: {{contact.first_name}} {{contact.last_name}}
-Email: {{contact.work_email || contact.email}}
+Work Email: {{contact.work_email}}
+Personal Email: {{contact.personal_email || contact.email}}
 Title: {{contact.title}}
 Company: {{contact.company_name}}
 LinkedIn: {{contact.linkedin_url}}
 
 **Scoring Criteria:**
 - Title seniority (C-level, VP, Director = high)
-- Business email vs personal
-- Company domain (enterprise = higher)
+- Has validated work email (+2)
+- Company size/type signals
 - Role relevance
 - Data completeness
 
@@ -142,11 +247,11 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
       output_variable: 'initial_score',
     },
 
-    // Step 7: Save initial score
+    // Step 11: Save initial score
     {
       name: 'Save Initial Score',
       description: 'Store initial score on contact',
-      step_order: 7,
+      step_order: 11,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -159,50 +264,21 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
       },
     },
 
-    // Step 8: Extract domain for company lookup
-    {
-      name: 'Extract Domain',
-      description: 'Get company domain from email',
-      step_order: 8,
-      action_type: 'tool_call',
-      action_config: {
-        tool_name: 'extract_domain',
-        input_mapping: { email: '{{contact.work_email || contact.email}}' },
-      },
-      output_variable: 'domain_info',
-      run_conditions: [
-        { field: '{{initial_score.enrichment_tier}}', operator: 'in', value: ['deep', 'light'] },
-      ],
-    },
+    // =========================================================================
+    // PHASE 5: Tiered Enrichment (based on score)
+    // =========================================================================
 
-    // TIER: LIGHT + DEEP - Hunter verify
-    {
-      name: 'Hunter Verify',
-      description: 'Verify email deliverability',
-      step_order: 9,
-      action_type: 'tool_call',
-      action_config: {
-        tool_name: 'verify_email_hunter',
-        input_mapping: { email: '{{contact.work_email || contact.email}}' },
-      },
-      output_variable: 'hunter_verify',
-      on_error: 'continue',
-      run_conditions: [
-        { field: '{{initial_score.enrichment_tier}}', operator: 'in', value: ['deep', 'light'] },
-      ],
-    },
-
-    // TIER: LIGHT + DEEP - Perplexity (depth varies)
+    // Step 12: Perplexity Research (both tiers, depth varies)
     {
       name: 'Perplexity Research',
       description: 'Company research (depth based on tier)',
-      step_order: 10,
+      step_order: 12,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'research_company_perplexity',
         input_mapping: {
-          company_name: '{{contact.company_name || domain_info.company_name}}',
-          domain: '{{domain_info.domain}}',
+          company_name: '{{contact.company_name}}',
+          domain: '{{derived_domain.domain}}',
           depth: '{{initial_score.enrichment_tier}}',
         },
       },
@@ -217,7 +293,7 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
     {
       name: 'LinkedIn Scrape',
       description: 'Get LinkedIn posts and profile data (max 10 posts)',
-      step_order: 11,
+      step_order: 13,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'scrape_linkedin_profile',
@@ -234,43 +310,21 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
       ],
     },
 
-    // TIER: DEEP ONLY - Apollo (when enabled)
-    {
-      name: 'Apollo Enrich',
-      description: 'Additional person/company data from Apollo (when enabled)',
-      step_order: 12,
-      action_type: 'tool_call',
-      action_config: {
-        tool_name: 'enrich_person_apollo',
-        input_mapping: {
-          email: '{{contact.work_email || contact.email}}',
-          first_name: '{{contact.first_name}}',
-          last_name: '{{contact.last_name}}',
-          domain: '{{domain_info.domain}}',
-        },
-      },
-      output_variable: 'apollo_data',
-      on_error: 'continue',
-      run_conditions: [
-        { field: '{{initial_score.enrichment_tier}}', operator: '==', value: 'deep' },
-      ],
-    },
-
     // Store all enrichment data
     {
       name: 'Store Enrichment Data',
       description: 'Save all enrichment results to contact',
-      step_order: 13,
+      step_order: 14,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
         input_mapping: {
           contact_id: '{{contact.id}}',
           enrichment_data: {
-            hunter: '{{hunter_verify}}',
+            pdl: '{{pdl_data}}',
+            generect: '{{generect_result}}',
             perplexity: '{{perplexity_data}}',
             linkedin: '{{linkedin_data}}',
-            apollo: '{{apollo_data}}',
             enriched_at: '{{now()}}',
           },
         },
@@ -280,29 +334,30 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
       ],
     },
 
-    // DEEP ANALYSIS (7+ only)
+    // =========================================================================
+    // PHASE 6: Deep Analysis (7+ only)
+    // =========================================================================
+
     {
       name: 'Deep Analysis',
       description: 'Synthesize all data, generate insights for high-value leads',
-      step_order: 14,
+      step_order: 15,
       action_type: 'ai_prompt',
       action_config: {
         prompt_template: `You are analyzing a high-value lead. Synthesize all available data and provide actionable intelligence.
 
 **Contact:**
-{{contact}}
+Name: {{contact.first_name}} {{contact.last_name}}
+Work Email: {{contact.work_email}}
+Title: {{contact.title}}
+Company: {{contact.company_name}}
+LinkedIn: {{contact.linkedin_url}}
 
 **LinkedIn Data:**
 {{linkedin_data}}
 
 **Company Research:**
 {{perplexity_data}}
-
-**Apollo Data:**
-{{apollo_data}}
-
-**Hunter Verification:**
-{{hunter_verify}}
 
 Provide:
 1. **Executive Summary** (2-3 sentences)
@@ -327,7 +382,7 @@ Respond with JSON:
     {
       name: 'Store Analysis',
       description: 'Save deep analysis to contact',
-      step_order: 15,
+      step_order: 16,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -347,7 +402,7 @@ Respond with JSON:
     {
       name: 'Re-Score',
       description: 'Update score based on enrichment findings',
-      step_order: 16,
+      step_order: 17,
       action_type: 'ai_prompt',
       action_config: {
         prompt_template: `Re-evaluate this lead score based on enrichment data.
@@ -357,12 +412,12 @@ Respond with JSON:
 
 **New Information:**
 - Deep Analysis: {{deep_analysis}}
-- Email Valid: {{hunter_verify.data.status}}
+- Work Email Found: {{contact.work_email ? 'Yes' : 'No'}}
 - LinkedIn Activity: {{linkedin_data.data.posts.length || 0}} posts
 
 **Adjustments:**
 +1-2 for: decision maker confirmed, recent activity, strong company fit, budget signals
--1-2 for: invalid email, no engagement, mismatched role, risk factors
+-1-2 for: no work email, no engagement, mismatched role, risk factors
 
 Respond with JSON:
 {"new_score": <0-10>, "score_change": <number>, "adjustment_reasons": [string]}`,
@@ -379,7 +434,7 @@ Respond with JSON:
     {
       name: 'Update Final Score',
       description: 'Store re-scored value',
-      step_order: 17,
+      step_order: 18,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -397,11 +452,14 @@ Respond with JSON:
       ],
     },
 
-    // Route to Contact Agent
+    // =========================================================================
+    // PHASE 7: Route to Contact Agent
+    // =========================================================================
+
     {
       name: 'Route to Contact Agent',
       description: 'Hand off to Contact Agent for notification/routing',
-      step_order: 18,
+      step_order: 19,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'emit_event',
@@ -413,6 +471,7 @@ Respond with JSON:
             score: '{{rescore.new_score || initial_score.score}}',
             enrichment_tier: '{{initial_score.enrichment_tier}}',
             flags: '{{deep_analysis.flags || []}}',
+            has_work_email: '{{contact.work_email ? true : false}}',
             source: 'sdr_agent',
           },
         },

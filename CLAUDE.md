@@ -52,13 +52,18 @@ Active work:
 - Job: Extract → Spam Check → Dedupe → Route
 - Routes NEW contacts to SDR, EXISTING to Contact Agent
 
-### 2. SDR Agent v2 (merged with Scoring)
+### 2. SDR Agent v3 (merged with Scoring)
 - Trigger: `intake.new_contact`
-- Job: Ensure work email → Initial score (0-10) → Tiered enrichment → Deep analysis (7+) → Re-score → Route
+- Job: Get company info → Find work email (Generect) → Score → Tiered enrichment → Deep analysis (7+) → Route
+- Work email flow:
+  1. Classify email (personal vs business)
+  2. If personal → PDL for company info (name, LinkedIn, title)
+  3. AI derives domain from company name
+  4. Generect finds validated work email ($0.03/success)
 - Enrichment tiers:
-  - **Deep (7-10)**: PDL + Hunter + Perplexity deep + LinkedIn + Apollo
-  - **Light (5-6)**: Hunter + Perplexity light
-  - **None (0-4)**: Skip enrichment (save money)
+  - **Deep (7-10)**: Perplexity deep + LinkedIn + full analysis (~8-10¢)
+  - **Light (5-6)**: Perplexity light (~5¢)
+  - **None (0-4)**: Just scoring (~4¢)
 
 ### 3. Contact Agent
 - Trigger: `sdr.complete` or `intake.existing_updated`
@@ -71,8 +76,9 @@ Active work:
 - Contact table additions: work_email, personal_email, enrichment_tier, enrichment_data, score_breakdown, flags, sales_notes
 
 ### Enrichment APIs: `cli/enrichment-apis.js`
-- `enrich_person_pdl` - Find work email from personal email
-- `find_email_hunter` - Find email by domain + name
+- `enrich_person_pdl` - Get company info, LinkedIn, title from personal email
+- `find_email_generect` - **Primary email finder** ($0.03/success, validated)
+- `find_email_hunter` - Find email by domain + name (backup)
 - `verify_email_hunter` - Verify email deliverability
 - `scrape_linkedin_profile` - LinkedIn data via Apify (limit=10 for cost)
 - `research_company_perplexity` - Company research (depth: light/deep)
@@ -138,9 +144,8 @@ This ensures continuity across sessions when context resets.
 ## Next Steps (TODO)
 
 1. Test full pipeline with a contact
-2. Add PDL API key and test work email lookup
-3. Build Slack integration for Contact Agent notifications
-4. Add merge_contact_data and delete_contact tools for Intake Agent
+2. Build Slack integration for Contact Agent notifications
+3. Add more robust domain derivation (Perplexity fallback if AI guess fails)
 
 ## Adding a New Agent
 
