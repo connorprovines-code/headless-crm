@@ -11,7 +11,9 @@ Headless CRM is an AI-orchestrated CRM where humans interact via natural languag
 Active work:
 - 3-Agent pipeline: Intake → SDR → Contact
 - Workflow executor functional
-- Enrichment APIs: Hunter, Apify, Perplexity working; PDL ready; Apollo disabled
+- Enrichment APIs: Generect (email), PDL, Apify, Perplexity working; Apollo disabled
+- **Runtime configuration**: ICP and scoring rules are now stored in `team_config` table
+- **Dynamic intake sources**: `intake_sources` table for webhook/API configurations
 
 ## Repository Structure
 
@@ -52,15 +54,16 @@ Active work:
 - Job: Extract → Spam Check → Dedupe → Route
 - Routes NEW contacts to SDR, EXISTING to Contact Agent
 
-### 2. SDR Agent v3 (merged with Scoring)
+### 2. SDR Agent v4 (merged with Scoring)
 - Trigger: `intake.new_contact`
-- Job: Get company info → Find work email (Generect) → Score → Tiered enrichment → Deep analysis (7+) → Route
+- Job: Get company info → Find work email (Generect) → **Load ICP config** → Score → Tiered enrichment → Deep analysis (7+) → Route
 - Work email flow:
   1. Classify email (personal vs business)
   2. If personal → PDL for company info (name, LinkedIn, title)
   3. AI derives domain from company name
   4. Generect finds validated work email ($0.03/success)
-- Enrichment tiers:
+- **Scoring uses dynamic ICP from `team_config` table**
+- Enrichment tiers (configurable via `scoring_rules` config):
   - **Deep (7-10)**: Perplexity deep + LinkedIn + full analysis (~8-10¢)
   - **Light (5-6)**: Perplexity light (~5¢)
   - **None (0-4)**: Just scoring (~4¢)
@@ -74,6 +77,12 @@ Active work:
 ### Schema: `supabase/migrations/008_revised_agent_workflows.sql`
 - Latest workflow definitions
 - Contact table additions: work_email, personal_email, enrichment_tier, enrichment_data, score_breakdown, flags, sales_notes
+
+### Runtime Config: `supabase/migrations/009_runtime_config.sql`
+- `intake_sources` - Dynamic intake configuration (webhooks, APIs, forms)
+- `team_config` - ICP, scoring rules, enrichment settings
+- `config_audit_log` - Tracks all config changes
+- Default ICP and scoring rules inserted for all teams
 
 ### Enrichment APIs: `cli/enrichment-apis.js`
 - `enrich_person_pdl` - Get company info, LinkedIn, title from personal email
@@ -94,6 +103,11 @@ Active work:
 - Contact/Company/Deal CRUD operations
 - Search functions
 - All mutations log to `agent_logs`
+- **Runtime config tools**:
+  - `get_icp` / `update_icp` - View/modify Ideal Customer Profile
+  - `get_scoring_rules_config` / `update_scoring_rules` - View/modify scoring thresholds
+  - `list_intake_sources` / `create_intake_source` / `update_intake_source` - Manage intake sources
+  - `get_config` / `set_config` - Generic config access
 
 ## Environment Variables
 
@@ -143,9 +157,11 @@ This ensures continuity across sessions when context resets.
 
 ## Next Steps (TODO)
 
-1. Test full pipeline with a contact
-2. Build Slack integration for Contact Agent notifications
-3. Add more robust domain derivation (Perplexity fallback if AI guess fails)
+1. Run migration 009 to create runtime config tables
+2. Test ICP update via CLI ("Our ICP is now Series A SaaS companies")
+3. Test intake source creation ("Add a webhook for Typeform leads")
+4. Build Slack integration for Contact Agent notifications
+5. Add more robust domain derivation (Perplexity fallback if AI guess fails)
 
 ## Adding a New Agent
 
@@ -160,3 +176,25 @@ This ensures continuity across sessions when context resets.
 - **tools.js as shared library**: All agents import tools from here
 - **workflow-executor.js**: Generic engine that can run any agent definition
 - **Tiered enrichment**: Cost-aware - only deep enrich high-value leads
+- **Runtime configuration**: ICP and scoring rules stored in database, not hardcoded
+- **Self-modifying via CLI**: User can say "update my ICP" and the system updates itself
+
+## Runtime Configuration
+
+The CRM is self-modifying. The CLI can update these configs via natural language:
+
+| Config Key | What it controls | Example CLI command |
+|------------|------------------|---------------------|
+| `icp` | Ideal Customer Profile (titles, company size, industries) | "Our ICP is Series A SaaS, 50-200 employees" |
+| `scoring_rules` | Score thresholds, point values | "Lower hot lead threshold to 7" |
+| `enrichment_settings` | Which APIs to use, cost limits | "Don't enrich leads under score 4" |
+
+### Intake Sources
+
+New lead sources can be added at runtime:
+```
+"Add a webhook intake for Typeform"
+→ Creates intake_sources record
+→ Returns webhook URL and secret
+→ Leads from that source auto-enrich
+```

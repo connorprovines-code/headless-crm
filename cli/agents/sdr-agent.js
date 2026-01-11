@@ -28,7 +28,7 @@ export const sdrAgent = {
   description: 'Researcher + Scorer: ensures work email via Generect, scores lead, enriches based on tier, routes to Contact Agent',
   category: 'enrichment',
   trigger_event: 'intake.new_contact',
-  version: 3,
+  version: 4,
 
   steps: [
     // =========================================================================
@@ -213,14 +213,42 @@ Respond with JSON only:
     // PHASE 4: Initial Scoring
     // =========================================================================
 
-    // Step 10: Initial scoring (0-10)
+    // Step 10a: Load ICP and scoring rules from config
+    {
+      name: 'Load ICP Config',
+      description: 'Get ICP definition from team config',
+      step_order: 10,
+      action_type: 'tool_call',
+      action_config: {
+        tool_name: 'get_config',
+        input_mapping: { config_key: 'icp' },
+      },
+      output_variable: 'icp_config',
+      on_error: 'continue',
+    },
+
+    // Step 10b: Load scoring rules
+    {
+      name: 'Load Scoring Rules',
+      description: 'Get scoring rules from team config',
+      step_order: 11,
+      action_type: 'tool_call',
+      action_config: {
+        tool_name: 'get_config',
+        input_mapping: { config_key: 'scoring_rules' },
+      },
+      output_variable: 'scoring_config',
+      on_error: 'continue',
+    },
+
+    // Step 11: Initial scoring (0-10) - now uses dynamic ICP
     {
       name: 'Initial Score',
-      description: 'Calculate initial lead score based on available data',
-      step_order: 10,
+      description: 'Calculate initial lead score based on ICP and available data',
+      step_order: 12,
       action_type: 'ai_prompt',
       action_config: {
-        prompt_template: `Score this lead from 0-10 based on available information.
+        prompt_template: `Score this lead from 0-10 based on the Ideal Customer Profile (ICP) and available information.
 
 **Contact:**
 Name: {{contact.first_name}} {{contact.last_name}}
@@ -230,28 +258,33 @@ Title: {{contact.title}}
 Company: {{contact.company_name}}
 LinkedIn: {{contact.linkedin_url}}
 
-**Scoring Criteria:**
-- Title seniority (C-level, VP, Director = high)
-- Has validated work email (+2)
-- Company size/type signals
-- Role relevance
-- Data completeness
+**Ideal Customer Profile (ICP):**
+{{icp_config.config || "No ICP configured - use general B2B scoring"}}
+
+**Scoring Rules:**
+{{scoring_config.config || "Use default: base_score=5, title +1-3, work_email +2, company_fit +1-2"}}
+
+Apply the ICP criteria:
+- High-value titles from ICP get more points
+- Preferred industries from ICP get bonus
+- Company size in ideal range gets bonus
+- Excluded industries or negative signals reduce score
 
 Respond with JSON:
-{"score": <0-10>, "breakdown": {"title_seniority": <0-3>, "email_quality": <0-2>, "company_signal": <0-3>, "data_quality": <0-2>}, "reasons": [<string>], "enrichment_tier": "deep|light|none"}
+{"score": <0-10>, "breakdown": {"title_seniority": <0-3>, "email_quality": <0-2>, "company_signal": <0-3>, "data_quality": <0-2>}, "reasons": [<string>], "enrichment_tier": "deep|light|none", "icp_match": "strong|moderate|weak|poor"}
 
-Tiers: 7-10=deep, 5-6=light, 0-4=none`,
+Enrichment tiers from config or default: 7-10=deep, 5-6=light, 0-4=none`,
         output_type: 'json',
-        max_tokens: 300,
+        max_tokens: 400,
       },
       output_variable: 'initial_score',
     },
 
-    // Step 11: Save initial score
+    // Step 13: Save initial score
     {
       name: 'Save Initial Score',
       description: 'Store initial score on contact',
-      step_order: 11,
+      step_order: 13,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -268,11 +301,11 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
     // PHASE 5: Tiered Enrichment (based on score)
     // =========================================================================
 
-    // Step 12: Perplexity Research (both tiers, depth varies)
+    // Step 14: Perplexity Research (both tiers, depth varies)
     {
       name: 'Perplexity Research',
       description: 'Company research (depth based on tier)',
-      step_order: 12,
+      step_order: 14,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'research_company_perplexity',
@@ -293,7 +326,7 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
     {
       name: 'LinkedIn Scrape',
       description: 'Get LinkedIn posts and profile data (max 10 posts)',
-      step_order: 13,
+      step_order: 15,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'scrape_linkedin_profile',
@@ -314,7 +347,7 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
     {
       name: 'Store Enrichment Data',
       description: 'Save all enrichment results to contact',
-      step_order: 14,
+      step_order: 16,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -341,7 +374,7 @@ Tiers: 7-10=deep, 5-6=light, 0-4=none`,
     {
       name: 'Deep Analysis',
       description: 'Synthesize all data, generate insights for high-value leads',
-      step_order: 15,
+      step_order: 17,
       action_type: 'ai_prompt',
       action_config: {
         prompt_template: `You are analyzing a high-value lead. Synthesize all available data and provide actionable intelligence.
@@ -382,7 +415,7 @@ Respond with JSON:
     {
       name: 'Store Analysis',
       description: 'Save deep analysis to contact',
-      step_order: 16,
+      step_order: 18,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -402,7 +435,7 @@ Respond with JSON:
     {
       name: 'Re-Score',
       description: 'Update score based on enrichment findings',
-      step_order: 17,
+      step_order: 19,
       action_type: 'ai_prompt',
       action_config: {
         prompt_template: `Re-evaluate this lead score based on enrichment data.
@@ -434,7 +467,7 @@ Respond with JSON:
     {
       name: 'Update Final Score',
       description: 'Store re-scored value',
-      step_order: 18,
+      step_order: 20,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'update_contact',
@@ -459,7 +492,7 @@ Respond with JSON:
     {
       name: 'Route to Contact Agent',
       description: 'Hand off to Contact Agent for notification/routing',
-      step_order: 19,
+      step_order: 21,
       action_type: 'tool_call',
       action_config: {
         tool_name: 'emit_event',

@@ -340,6 +340,159 @@ export const toolDefinitions = [
       },
     },
   },
+  // =========================================================================
+  // RUNTIME CONFIGURATION TOOLS
+  // =========================================================================
+  {
+    name: 'get_icp',
+    description: 'Get the current Ideal Customer Profile (ICP) definition. Use this to see what characteristics define a good lead.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'update_icp',
+    description: 'Update the Ideal Customer Profile (ICP). Use this when the user wants to change their target customer definition.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title_keywords: {
+          type: 'object',
+          description: 'Title keywords by value tier: {high_value: [...], medium_value: [...], low_value: [...]}',
+        },
+        company_size: {
+          type: 'object',
+          description: 'Company size preferences: {ideal_min, ideal_max, acceptable_min, acceptable_max}',
+        },
+        industries: {
+          type: 'object',
+          description: 'Industry preferences: {preferred: [...], acceptable: [...], excluded: [...]}',
+        },
+        signals: {
+          type: 'object',
+          description: 'Signals: {positive: [...], negative: [...]}',
+        },
+        description: {
+          type: 'string',
+          description: 'Human-readable description of the ICP',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_scoring_rules',
+    description: 'Get the current lead scoring rules. Shows how scores are calculated and thresholds.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'update_scoring_rules',
+    description: 'Update lead scoring rules. Use this to adjust thresholds, point values, or enrichment tiers.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        base_score: { type: 'number', description: 'Starting score for new contacts (default 5)' },
+        hot_lead_threshold: { type: 'number', description: 'Score threshold for hot lead alerts (default 8)' },
+        warm_lead_threshold: { type: 'number', description: 'Score threshold for warm lead alerts (default 6)' },
+        enrichment_thresholds: {
+          type: 'object',
+          description: 'Score thresholds for enrichment tiers: {deep: 7, light: 5, none: 0}',
+        },
+        title_score: {
+          type: 'object',
+          description: 'Points for title tiers: {high_value: 3, medium_value: 2, low_value: 1}',
+        },
+        email_score: {
+          type: 'object',
+          description: 'Points for email quality: {work_email_verified: 2, work_email_unverified: 1, personal_email: 0}',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_intake_sources',
+    description: 'List all configured intake sources (webhooks, forms, APIs that feed leads into the system)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        include_disabled: { type: 'boolean', description: 'Include disabled sources (default false)' },
+      },
+    },
+  },
+  {
+    name: 'create_intake_source',
+    description: 'Create a new intake source for receiving leads. Use this when the user wants to add a new way to get leads (webhook, form, API).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Display name (e.g., "Typeform Leads", "LinkedIn Webhook")' },
+        source_type: { type: 'string', description: 'Type: webhook, api_poll, manual, email, form' },
+        field_mapping: {
+          type: 'object',
+          description: 'How to extract contact fields from payload. Use JSONPath syntax: {"email": "$.data.email", "first_name": "$.fields.name"}',
+        },
+        auto_enrich: { type: 'boolean', description: 'Trigger enrichment pipeline automatically (default true)' },
+        default_score: { type: 'number', description: 'Starting score for contacts from this source (default 5)' },
+        default_tags: { type: 'array', items: { type: 'string' }, description: 'Tags to apply automatically' },
+      },
+      required: ['name', 'source_type'],
+    },
+  },
+  {
+    name: 'update_intake_source',
+    description: 'Update an existing intake source configuration',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'string', description: 'UUID of the intake source' },
+        source_name: { type: 'string', description: 'Name of the source (used if source_id not provided)' },
+        name: { type: 'string', description: 'New display name' },
+        field_mapping: { type: 'object', description: 'Updated field mapping' },
+        auto_enrich: { type: 'boolean', description: 'Enable/disable auto enrichment' },
+        default_score: { type: 'number', description: 'New default score' },
+        default_tags: { type: 'array', items: { type: 'string' }, description: 'New default tags' },
+        is_enabled: { type: 'boolean', description: 'Enable or disable the source' },
+      },
+    },
+  },
+  {
+    name: 'get_intake_source_webhook',
+    description: 'Get the webhook URL and secret for an intake source. Use this when setting up integrations.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'string', description: 'UUID of the intake source' },
+        source_name: { type: 'string', description: 'Name of the source (used if source_id not provided)' },
+      },
+    },
+  },
+  {
+    name: 'get_config',
+    description: 'Get any configuration value by key. Keys: icp, scoring_rules, enrichment_settings',
+    input_schema: {
+      type: 'object',
+      properties: {
+        config_key: { type: 'string', description: 'Configuration key to retrieve' },
+      },
+      required: ['config_key'],
+    },
+  },
+  {
+    name: 'set_config',
+    description: 'Set any configuration value. Use for advanced config changes not covered by specific tools.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        config_key: { type: 'string', description: 'Configuration key' },
+        config_value: { type: 'object', description: 'New configuration value (JSON)' },
+        reason: { type: 'string', description: 'Reason for the change (for audit log)' },
+      },
+      required: ['config_key', 'config_value'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -1337,6 +1490,297 @@ export async function merge_contact_data({ existing_contact_id, new_contact_id, 
 }
 
 // ============================================================================
+// RUNTIME CONFIGURATION TOOLS
+// ============================================================================
+
+/**
+ * Helper: Get config with fallback to global default
+ */
+async function getTeamConfig(configKey) {
+  // Try team-specific first
+  if (DEFAULT_TEAM_ID) {
+    const { data } = await supabase
+      .from('team_config')
+      .select('config_value')
+      .eq('team_id', DEFAULT_TEAM_ID)
+      .eq('config_key', configKey)
+      .single();
+
+    if (data) return data.config_value;
+  }
+
+  // Fall back to global default
+  const { data, error } = await supabase
+    .from('team_config')
+    .select('config_value')
+    .is('team_id', null)
+    .eq('config_key', configKey)
+    .single();
+
+  if (error) return null;
+  return data?.config_value;
+}
+
+/**
+ * Helper: Update or create config
+ */
+async function setTeamConfig(configKey, configValue, reason) {
+  const { data, error } = await supabase
+    .from('team_config')
+    .upsert({
+      team_id: DEFAULT_TEAM_ID,
+      config_key: configKey,
+      config_value: configValue,
+      last_modified_by: 'cli',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'team_id,config_key' })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'update_config', 'team_config', data.id,
+    { config_key: configKey, reason }, configValue);
+
+  return data;
+}
+
+// ICP Tools
+export async function get_icp() {
+  const icp = await getTeamConfig('icp');
+  if (!icp) {
+    return { message: 'No ICP configured. Using defaults.', icp: null };
+  }
+  return { icp };
+}
+
+export async function update_icp({ title_keywords, company_size, industries, signals, description }) {
+  // Get current ICP to merge with updates
+  const current = await getTeamConfig('icp') || {};
+
+  const updated = {
+    ...current,
+    ...(title_keywords && { title_keywords }),
+    ...(company_size && { company_size }),
+    ...(industries && { industries }),
+    ...(signals && { signals }),
+    ...(description && { description }),
+  };
+
+  await setTeamConfig('icp', updated, 'Updated via CLI');
+
+  return {
+    message: 'ICP updated successfully',
+    icp: updated,
+  };
+}
+
+// Scoring Rules Tools
+export async function get_scoring_rules_config() {
+  const rules = await getTeamConfig('scoring_rules');
+  if (!rules) {
+    return { message: 'No scoring rules configured. Using defaults.', scoring_rules: null };
+  }
+  return { scoring_rules: rules };
+}
+
+export async function update_scoring_rules({
+  base_score,
+  hot_lead_threshold,
+  warm_lead_threshold,
+  enrichment_thresholds,
+  title_score,
+  email_score,
+}) {
+  const current = await getTeamConfig('scoring_rules') || {};
+
+  const updated = {
+    ...current,
+    ...(base_score !== undefined && { base_score }),
+    ...(hot_lead_threshold !== undefined && { hot_lead_threshold }),
+    ...(warm_lead_threshold !== undefined && { warm_lead_threshold }),
+    ...(enrichment_thresholds && { enrichment_thresholds }),
+    ...(title_score && { title_score }),
+    ...(email_score && { email_score }),
+  };
+
+  await setTeamConfig('scoring_rules', updated, 'Updated via CLI');
+
+  return {
+    message: 'Scoring rules updated successfully',
+    scoring_rules: updated,
+  };
+}
+
+// Intake Source Tools
+export async function list_intake_sources({ include_disabled = false }) {
+  let query = supabase
+    .from('intake_sources')
+    .select('id, name, slug, source_type, is_enabled, auto_enrich, default_score, total_contacts, last_received_at')
+    .order('created_at', { ascending: false });
+
+  if (DEFAULT_TEAM_ID) {
+    query = query.eq('team_id', DEFAULT_TEAM_ID);
+  }
+
+  if (!include_disabled) {
+    query = query.eq('is_enabled', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return { intake_sources: data || [], count: data?.length || 0 };
+}
+
+export async function create_intake_source({
+  name,
+  source_type,
+  field_mapping = {},
+  auto_enrich = true,
+  default_score = 5,
+  default_tags = [],
+}) {
+  // Generate slug from name
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+  // Generate webhook secret for webhook types
+  const webhook_secret = source_type === 'webhook'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : null;
+
+  const { data, error } = await supabase
+    .from('intake_sources')
+    .insert({
+      team_id: DEFAULT_TEAM_ID,
+      name,
+      slug,
+      source_type,
+      webhook_secret,
+      field_mapping,
+      auto_enrich,
+      default_score,
+      default_tags,
+      is_enabled: true,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'create_intake_source', 'intake_source', data.id,
+    { name, source_type }, data);
+
+  const result = {
+    message: `Created intake source: ${name}`,
+    intake_source: data,
+  };
+
+  // Include webhook URL for webhook types
+  if (source_type === 'webhook') {
+    result.webhook_url = `/api/intake/${slug}`;
+    result.webhook_secret = webhook_secret;
+  }
+
+  return result;
+}
+
+export async function update_intake_source({
+  source_id,
+  source_name,
+  name,
+  field_mapping,
+  auto_enrich,
+  default_score,
+  default_tags,
+  is_enabled,
+}) {
+  // Find source
+  let resolvedId = source_id;
+  if (!resolvedId && source_name) {
+    const { data } = await supabase
+      .from('intake_sources')
+      .select('id')
+      .ilike('name', `%${source_name}%`)
+      .single();
+    if (data) resolvedId = data.id;
+  }
+  if (!resolvedId) throw new Error('Intake source not found');
+
+  const updates = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (field_mapping !== undefined) updates.field_mapping = field_mapping;
+  if (auto_enrich !== undefined) updates.auto_enrich = auto_enrich;
+  if (default_score !== undefined) updates.default_score = default_score;
+  if (default_tags !== undefined) updates.default_tags = default_tags;
+  if (is_enabled !== undefined) updates.is_enabled = is_enabled;
+
+  const { data, error } = await supabase
+    .from('intake_sources')
+    .update(updates)
+    .eq('id', resolvedId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'update_intake_source', 'intake_source', resolvedId,
+    updates, data);
+
+  return { message: `Updated intake source: ${data.name}`, intake_source: data };
+}
+
+export async function get_intake_source_webhook({ source_id, source_name }) {
+  let source;
+  if (source_id) {
+    const { data, error } = await supabase
+      .from('intake_sources')
+      .select('*')
+      .eq('id', source_id)
+      .single();
+    if (error) throw new Error(error.message);
+    source = data;
+  } else if (source_name) {
+    const { data, error } = await supabase
+      .from('intake_sources')
+      .select('*')
+      .ilike('name', `%${source_name}%`)
+      .single();
+    if (error) throw new Error(`Intake source not found: ${source_name}`);
+    source = data;
+  } else {
+    throw new Error('Must provide source_id or source_name');
+  }
+
+  return {
+    name: source.name,
+    source_type: source.source_type,
+    webhook_url: `/api/intake/${source.slug}`,
+    webhook_secret: source.webhook_secret,
+    field_mapping: source.field_mapping,
+    is_enabled: source.is_enabled,
+  };
+}
+
+// Generic Config Tools
+export async function get_config({ config_key }) {
+  const value = await getTeamConfig(config_key);
+  if (!value) {
+    return { message: `No config found for key: ${config_key}`, config: null };
+  }
+  return { config_key, config: value };
+}
+
+export async function set_config({ config_key, config_value, reason }) {
+  await setTeamConfig(config_key, config_value, reason);
+  return {
+    message: `Config '${config_key}' updated successfully`,
+    config_key,
+    config: config_value,
+  };
+}
+
+// ============================================================================
 // TOOL DISPATCHER
 // ============================================================================
 
@@ -1379,6 +1823,17 @@ const toolFunctions = {
   send_notification,
   delete_contact,
   merge_contact_data,
+  // Runtime configuration
+  get_icp,
+  update_icp,
+  get_scoring_rules_config,
+  update_scoring_rules,
+  list_intake_sources,
+  create_intake_source,
+  update_intake_source,
+  get_intake_source_webhook,
+  get_config,
+  set_config,
 };
 
 export async function executeTool(name, input) {
