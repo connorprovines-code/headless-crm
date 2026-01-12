@@ -420,7 +420,7 @@
     // For local dev: Edit these values directly (this file is .gitignored locally)
     // ==========================================================================
     const CONFIG = {
-      // EDIT THESE VALUES FOR LOCAL DEVELOPMENT:
+      // These are loaded from localStorage. On first run, you'll be prompted.
       SUPABASE_URL: localStorage.getItem('CRM_SUPABASE_URL') || '',
       SUPABASE_KEY: localStorage.getItem('CRM_SUPABASE_KEY') || '',
       ANTHROPIC_API_KEY: localStorage.getItem('CRM_ANTHROPIC_API_KEY') || '',
@@ -428,7 +428,6 @@
 
     // If no config in localStorage, prompt user on first run
     if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_KEY || !CONFIG.ANTHROPIC_API_KEY) {
-      alert('First time setup: Please enter your API keys.');
       const url = prompt('Supabase URL:', 'https://xxx.supabase.co');
       const key = prompt('Supabase Service Key:');
       const anthropic = prompt('Anthropic API Key:');
@@ -709,6 +708,67 @@
           },
         },
       },
+      {
+        name: 'get_icp',
+        description: 'Get the current Ideal Customer Profile (ICP) definition. Use this to see what characteristics define a good lead.',
+        input_schema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'update_icp',
+        description: 'Update the Ideal Customer Profile (ICP). Use this when the user wants to change their target customer definition.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title_keywords: {
+              type: 'object',
+              description: 'Title keywords by value tier: { high_value: [...], medium_value: [...], low_value: [...] }',
+            },
+            company_size: {
+              type: 'object',
+              description: 'Company size preferences: { ideal_min, ideal_max, acceptable_min, acceptable_max }',
+            },
+            industries: {
+              type: 'object',
+              description: 'Industry preferences: { preferred: [...], acceptable: [...], excluded: [...] }',
+            },
+            signals: {
+              type: 'object',
+              description: 'Buying signals: { positive: [...], negative: [...] }',
+            },
+            description: {
+              type: 'string',
+              description: 'Human-readable description of the ICP',
+            },
+          },
+        },
+      },
+      {
+        name: 'delete_contact',
+        description: 'Delete a contact from the CRM',
+        input_schema: {
+          type: 'object',
+          properties: {
+            contact_id: { type: 'string', description: 'UUID of the contact to delete' },
+            contact_name: { type: 'string', description: 'Name of the contact (used if contact_id not provided)' },
+            reason: { type: 'string', description: 'Reason for deletion' },
+          },
+        },
+      },
+      {
+        name: 'delete_company',
+        description: 'Delete a company from the CRM',
+        input_schema: {
+          type: 'object',
+          properties: {
+            company_id: { type: 'string', description: 'UUID of the company to delete' },
+            company_name: { type: 'string', description: 'Name of the company (used if company_id not provided)' },
+            reason: { type: 'string', description: 'Reason for deletion' },
+          },
+        },
+      },
     ];
 
     // ==========================================================================
@@ -733,7 +793,7 @@
 
     const toolFunctions = {
       async search_companies({ query, limit = 10 }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('companies')
           .select('id, name, domain, industry, employee_count, score')
           .or(`name.ilike.%${query}%,domain.ilike.%${query}%`)
@@ -743,7 +803,7 @@
       },
 
       async search_contacts({ query, limit = 10 }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('contacts')
           .select(`id, first_name, last_name, email, phone, title, score, status, companies(id, name)`)
           .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`)
@@ -796,7 +856,7 @@
       },
 
       async create_company({ name, domain, industry, employee_count, notes }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('companies')
           .insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, name, domain, industry, employee_count, notes })
           .select()
@@ -819,7 +879,7 @@
           }
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('contacts')
           .insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, company_id: resolvedCompanyId, first_name, last_name, email, phone, title, role_type, notes })
           .select('*, companies(name)')
@@ -844,7 +904,7 @@
         }
         if (!resolvedContactId) throw new Error('Contact not found. Please create the contact first.');
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('interactions')
           .insert({ team_id: DEFAULT_TEAM_ID, user_id: DEFAULT_USER_ID, contact_id: resolvedContactId, company_id: contact?.company_id, type, channel, direction, subject, content, sentiment, outcome, follow_up_date })
           .select()
@@ -864,7 +924,7 @@
           if (data) { resolvedContactId = data.id; contact = data; }
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('tasks')
           .insert({ team_id: DEFAULT_TEAM_ID, assigned_to: DEFAULT_USER_ID, contact_id: resolvedContactId, company_id: contact?.company_id, type, priority, reason, due_date })
           .select()
@@ -876,7 +936,7 @@
 
       async get_call_list({ date, limit = 10 }) {
         const targetDate = date || new Date().toISOString().split('T')[0];
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('tasks')
           .select(`id, type, priority, reason, due_date, contacts(id, first_name, last_name, email, phone, score, companies(name))`)
           .is('completed_at', null)
@@ -927,7 +987,7 @@
       },
 
       async list_open_tasks({ limit = 20 }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('tasks')
           .select(`id, type, priority, reason, due_date, created_at, contacts(first_name, last_name, companies(name))`)
           .is('completed_at', null)
@@ -979,7 +1039,7 @@
       },
 
       async create_agent({ name, description, trigger_type, trigger_config, conditions, actions, allowed_tools }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('agent_configs')
           .insert({
             team_id: DEFAULT_TEAM_ID,
@@ -1026,7 +1086,7 @@
       },
 
       async get_recent_agent_activity({ limit = 20 }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('agent_logs')
           .select('id, agent, action, entity_type, entity_id, created_at, output')
           .order('created_at', { ascending: false })
@@ -1036,7 +1096,7 @@
       },
 
       async get_pending_events({ limit = 50 }) {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('events')
           .select('*')
           .eq('processed', false)
@@ -1044,6 +1104,92 @@
           .limit(limit);
         if (error) throw new Error(error.message);
         return { events: data, count: data.length };
+      },
+
+      async get_icp() {
+        const { data, error } = await supabaseClient
+          .from('team_config')
+          .select('config_value')
+          .eq('config_key', 'icp')
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!data) return { message: 'No ICP configured. Using defaults.', icp: null };
+        return { icp: data.config_value };
+      },
+
+      async update_icp({ title_keywords, company_size, industries, signals, description }) {
+        // Get current ICP to merge
+        const { data: current } = await supabaseClient
+          .from('team_config')
+          .select('config_value')
+          .eq('config_key', 'icp')
+          .maybeSingle();
+
+        const currentIcp = current?.config_value || {};
+        const updated = {
+          ...currentIcp,
+          ...(title_keywords && { title_keywords }),
+          ...(company_size && { company_size }),
+          ...(industries && { industries }),
+          ...(signals && { signals }),
+          ...(description && { description }),
+        };
+
+        const { error } = await supabaseClient
+          .from('team_config')
+          .upsert({
+            team_id: DEFAULT_TEAM_ID,
+            config_key: 'icp',
+            config_value: updated
+          }, { onConflict: 'team_id,config_key' });
+
+        if (error) throw new Error(error.message);
+        await logAgentAction('orchestrator', 'update_icp', 'config', 'icp', { title_keywords, company_size, industries, signals, description }, updated);
+        return { message: 'ICP updated successfully', icp: updated };
+      },
+
+      async delete_contact({ contact_id, contact_name, reason }) {
+        let resolvedId = contact_id;
+        if (!resolvedId && contact_name) {
+          const { data } = await supabaseClient
+            .from('contacts')
+            .select('id')
+            .or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`)
+            .limit(1)
+            .single();
+          if (data) resolvedId = data.id;
+        }
+        if (!resolvedId) throw new Error('Contact not found');
+
+        const { error } = await supabaseClient
+          .from('contacts')
+          .delete()
+          .eq('id', resolvedId);
+        if (error) throw new Error(error.message);
+        await logAgentAction('orchestrator', 'delete_contact', 'contact', resolvedId, { reason }, { deleted: true });
+        return { message: 'Contact deleted successfully', contact_id: resolvedId };
+      },
+
+      async delete_company({ company_id, company_name, reason }) {
+        let resolvedId = company_id;
+        if (!resolvedId && company_name) {
+          const { data } = await supabaseClient
+            .from('companies')
+            .select('id')
+            .ilike('name', `%${company_name}%`)
+            .limit(1)
+            .single();
+          if (data) resolvedId = data.id;
+        }
+        if (!resolvedId) throw new Error('Company not found');
+
+        const { error } = await supabaseClient
+          .from('companies')
+          .delete()
+          .eq('id', resolvedId);
+        if (error) throw new Error(error.message);
+        await logAgentAction('orchestrator', 'delete_company', 'company', resolvedId, { reason }, { deleted: true });
+        return { message: 'Company deleted successfully', company_id: resolvedId };
       },
     };
 
