@@ -11,12 +11,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Load .env from project root
+// Load .env from project root FIRST
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-import { supabase } from './supabase.js';
-import { processPendingEvents } from './workflow-executor.js';
+// Dynamic imports after env is loaded
+const { supabase } = await import('./supabase.js');
+const { processPendingEvents } = await import('./workflow-executor.js');
 
 // Configuration
 const POLL_INTERVAL_MS = 5000; // Check every 5 seconds
