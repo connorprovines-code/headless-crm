@@ -447,7 +447,7 @@
     // ==========================================================================
     // INITIALIZE SUPABASE
     // ==========================================================================
-    const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+    const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
     const DEFAULT_TEAM_ID = null;
     const DEFAULT_USER_ID = null;
 
@@ -717,7 +717,7 @@
 
     async function logAgentAction(agent, action, entityType, entityId, input, output) {
       try {
-        await supabase.from('agent_logs').insert({
+        await supabaseClient.from('agent_logs').insert({
           team_id: DEFAULT_TEAM_ID,
           agent,
           action,
@@ -755,21 +755,21 @@
       async get_company_brief({ company_id, company_name }) {
         let company;
         if (company_id) {
-          const { data, error } = await supabase.from('companies').select('*').eq('id', company_id).single();
+          const { data, error } = await supabaseClient.from('companies').select('*').eq('id', company_id).single();
           if (error) throw new Error(error.message);
           company = data;
         } else if (company_name) {
-          const { data, error } = await supabase.from('companies').select('*').ilike('name', `%${company_name}%`).limit(1).single();
+          const { data, error } = await supabaseClient.from('companies').select('*').ilike('name', `%${company_name}%`).limit(1).single();
           if (error) throw new Error(`Company not found: ${company_name}`);
           company = data;
         } else {
           throw new Error('Must provide company_id or company_name');
         }
 
-        const { data: contacts } = await supabase.from('contacts').select('id, first_name, last_name, email, title, role_type, score').eq('company_id', company.id);
-        const { data: deals } = await supabase.from('deals').select('id, name, stage, value, close_date').eq('company_id', company.id);
-        const { data: interactions } = await supabase.from('interactions').select('id, type, subject, sentiment, outcome, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(10);
-        const { data: tasks } = await supabase.from('tasks').select('id, type, priority, reason, due_date').eq('company_id', company.id).is('completed_at', null);
+        const { data: contacts } = await supabaseClient.from('contacts').select('id, first_name, last_name, email, title, role_type, score').eq('company_id', company.id);
+        const { data: deals } = await supabaseClient.from('deals').select('id, name, stage, value, close_date').eq('company_id', company.id);
+        const { data: interactions } = await supabaseClient.from('interactions').select('id, type, subject, sentiment, outcome, created_at').eq('company_id', company.id).order('created_at', { ascending: false }).limit(10);
+        const { data: tasks } = await supabaseClient.from('tasks').select('id, type, priority, reason, due_date').eq('company_id', company.id).is('completed_at', null);
 
         return { company, contacts: contacts || [], deals: deals || [], recent_interactions: interactions || [], open_tasks: tasks || [] };
       },
@@ -777,20 +777,20 @@
       async get_contact_brief({ contact_id, contact_name }) {
         let contact;
         if (contact_id) {
-          const { data, error } = await supabase.from('contacts').select('*, companies(id, name, domain, industry)').eq('id', contact_id).single();
+          const { data, error } = await supabaseClient.from('contacts').select('*, companies(id, name, domain, industry)').eq('id', contact_id).single();
           if (error) throw new Error(error.message);
           contact = data;
         } else if (contact_name) {
-          const { data, error } = await supabase.from('contacts').select('*, companies(id, name, domain, industry)').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          const { data, error } = await supabaseClient.from('contacts').select('*, companies(id, name, domain, industry)').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
           if (error) throw new Error(`Contact not found: ${contact_name}`);
           contact = data;
         } else {
           throw new Error('Must provide contact_id or contact_name');
         }
 
-        const { data: interactions } = await supabase.from('interactions').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(15);
-        const { data: tasks } = await supabase.from('tasks').select('*').eq('contact_id', contact.id).is('completed_at', null);
-        const { data: signals } = await supabase.from('signals').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10);
+        const { data: interactions } = await supabaseClient.from('interactions').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(15);
+        const { data: tasks } = await supabaseClient.from('tasks').select('*').eq('contact_id', contact.id).is('completed_at', null);
+        const { data: signals } = await supabaseClient.from('signals').select('*').eq('contact_id', contact.id).order('created_at', { ascending: false }).limit(10);
 
         return { contact, interactions: interactions || [], open_tasks: tasks || [], recent_signals: signals || [] };
       },
@@ -809,11 +809,11 @@
       async create_contact({ first_name, last_name, email, phone, title, role_type, company_id, company_name, notes }) {
         let resolvedCompanyId = company_id;
         if (!resolvedCompanyId && company_name) {
-          const { data: existing } = await supabase.from('companies').select('id').ilike('name', `%${company_name}%`).limit(1).single();
+          const { data: existing } = await supabaseClient.from('companies').select('id').ilike('name', `%${company_name}%`).limit(1).single();
           if (existing) {
             resolvedCompanyId = existing.id;
           } else {
-            const { data: newCompany, error } = await supabase.from('companies').insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, name: company_name }).select().single();
+            const { data: newCompany, error } = await supabaseClient.from('companies').insert({ team_id: DEFAULT_TEAM_ID, owner_id: DEFAULT_USER_ID, name: company_name }).select().single();
             if (error) throw new Error(error.message);
             resolvedCompanyId = newCompany.id;
           }
@@ -836,10 +836,10 @@
         let resolvedContactId = contact_id;
         let contact = null;
         if (!resolvedContactId && contact_name) {
-          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          const { data } = await supabaseClient.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
           if (data) { resolvedContactId = data.id; contact = data; }
         } else if (resolvedContactId) {
-          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').eq('id', resolvedContactId).single();
+          const { data } = await supabaseClient.from('contacts').select('id, company_id, first_name, last_name').eq('id', resolvedContactId).single();
           contact = data;
         }
         if (!resolvedContactId) throw new Error('Contact not found. Please create the contact first.');
@@ -860,7 +860,7 @@
         let resolvedContactId = contact_id;
         let contact = null;
         if (!resolvedContactId && contact_name) {
-          const { data } = await supabase.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
+          const { data } = await supabaseClient.from('contacts').select('id, company_id, first_name, last_name').or(`first_name.ilike.%${contact_name}%,last_name.ilike.%${contact_name}%`).limit(1).single();
           if (data) { resolvedContactId = data.id; contact = data; }
         }
 
@@ -908,19 +908,19 @@
         const table = entity_type === 'contact' ? 'contacts' : 'companies';
         let resolvedId = entity_id;
         if (!resolvedId && entity_name) {
-          const { data } = await supabase.from(table).select('id').ilike(entity_type === 'contact' ? 'first_name' : 'name', `%${entity_name}%`).limit(1).single();
+          const { data } = await supabaseClient.from(table).select('id').ilike(entity_type === 'contact' ? 'first_name' : 'name', `%${entity_name}%`).limit(1).single();
           if (data) resolvedId = data.id;
         }
         if (!resolvedId) throw new Error(`${entity_type} not found`);
 
-        const { data, error } = await supabase.from(table).update({ score }).eq('id', resolvedId).select().single();
+        const { data, error } = await supabaseClient.from(table).update({ score }).eq('id', resolvedId).select().single();
         if (error) throw new Error(error.message);
         await logAgentAction('web', 'update_score', entity_type, resolvedId, { score, reason }, data);
         return { updated: data, message: `Updated ${entity_type} score to ${score}` };
       },
 
       async complete_task({ task_id }) {
-        const { data, error } = await supabase.from('tasks').update({ completed_at: new Date().toISOString() }).eq('id', task_id).select().single();
+        const { data, error } = await supabaseClient.from('tasks').update({ completed_at: new Date().toISOString() }).eq('id', task_id).select().single();
         if (error) throw new Error(error.message);
         await logAgentAction('web', 'complete_task', 'task', task_id, {}, data);
         return { task: data, message: 'Task marked as completed' };
@@ -957,18 +957,18 @@
       async get_agent_details({ agent_id, agent_name }) {
         let agent;
         if (agent_id) {
-          const { data, error } = await supabase.from('agent_configs').select('*').eq('id', agent_id).single();
+          const { data, error } = await supabaseClient.from('agent_configs').select('*').eq('id', agent_id).single();
           if (error) throw new Error(error.message);
           agent = data;
         } else if (agent_name) {
-          const { data, error } = await supabase.from('agent_configs').select('*').ilike('name', `%${agent_name}%`).single();
+          const { data, error } = await supabaseClient.from('agent_configs').select('*').ilike('name', `%${agent_name}%`).single();
           if (error) throw new Error(`Agent not found: ${agent_name}`);
           agent = data;
         } else {
           throw new Error('Must provide agent_id or agent_name');
         }
 
-        const { data: runs } = await supabase
+        const { data: runs } = await supabaseClient
           .from('agent_runs')
           .select('id, status, started_at, completed_at, entities_affected, tokens_used, error_message')
           .eq('agent_config_id', agent.id)
@@ -1004,7 +1004,7 @@
       async update_agent({ agent_id, agent_name, name, description, is_enabled, trigger_type, trigger_config, conditions, actions, allowed_tools }) {
         let resolvedId = agent_id;
         if (!resolvedId && agent_name) {
-          const { data } = await supabase.from('agent_configs').select('id').ilike('name', `%${agent_name}%`).single();
+          const { data } = await supabaseClient.from('agent_configs').select('id').ilike('name', `%${agent_name}%`).single();
           if (data) resolvedId = data.id;
         }
         if (!resolvedId) throw new Error('Agent not found');
@@ -1019,7 +1019,7 @@
         if (actions !== undefined) updates.actions = actions;
         if (allowed_tools !== undefined) updates.allowed_tools = allowed_tools;
 
-        const { data, error } = await supabase.from('agent_configs').update(updates).eq('id', resolvedId).select().single();
+        const { data, error } = await supabaseClient.from('agent_configs').update(updates).eq('id', resolvedId).select().single();
         if (error) throw new Error(error.message);
         await logAgentAction('web', 'update_agent', 'agent_config', resolvedId, updates, data);
         return { agent: data, message: `Updated agent: ${data.name}` };
@@ -1271,7 +1271,7 @@ Agent trigger types:
     async function refreshSidebar() {
       // Recent contacts
       try {
-        const { data: contacts } = await supabase
+        const { data: contacts } = await supabaseClient
           .from('contacts')
           .select('id, first_name, last_name, score, companies(name)')
           .order('updated_at', { ascending: false })
@@ -1294,7 +1294,7 @@ Agent trigger types:
 
       // Recent companies
       try {
-        const { data: companies } = await supabase
+        const { data: companies } = await supabaseClient
           .from('companies')
           .select('id, name, industry, score')
           .order('updated_at', { ascending: false })
@@ -1317,7 +1317,7 @@ Agent trigger types:
 
       // Open tasks
       try {
-        const { data: tasks } = await supabase
+        const { data: tasks } = await supabaseClient
           .from('tasks')
           .select('id, type, reason, priority, contacts(first_name, last_name)')
           .is('completed_at', null)
@@ -1341,7 +1341,7 @@ Agent trigger types:
 
       // Agents
       try {
-        const { data: agents } = await supabase
+        const { data: agents } = await supabaseClient
           .from('agent_configs')
           .select('id, name, description, is_enabled, trigger_type, run_count')
           .order('created_at', { ascending: false })
@@ -1364,7 +1364,7 @@ Agent trigger types:
 
       // Agent activity
       try {
-        const { data: activity } = await supabase
+        const { data: activity } = await supabaseClient
           .from('agent_logs')
           .select('id, agent, action, entity_type, created_at')
           .order('created_at', { ascending: false })
@@ -1390,7 +1390,7 @@ Agent trigger types:
 
       // Pending events
       try {
-        const { data: events } = await supabase
+        const { data: events } = await supabaseClient
           .from('events')
           .select('id, event_type, entity_type, created_at')
           .eq('processed', false)
@@ -1437,7 +1437,7 @@ Agent trigger types:
     // ==========================================================================
     async function init() {
       try {
-        const { error } = await supabase.from('companies').select('id').limit(1);
+        const { error } = await supabaseClient.from('companies').select('id').limit(1);
         if (error) throw error;
         statusEl.textContent = 'Connected';
         statusEl.className = 'status connected';
