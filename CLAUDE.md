@@ -49,31 +49,48 @@ Active work:
     └── ARCHITECTURE.md    # Full architecture and roadmap
 ```
 
-## Agent Pipeline (Migration 008)
+## Agent Pipeline
 
-### Flow: Contact Created → SDR Agent
-1. Contact inserted (via CLI, API, webhook, form - any method)
-2. Database trigger emits `contact.created` event with 10s delay
-3. Event Monitor picks up event after delay
-4. SDR Agent workflow executes
+### Active Agents
+| Agent | Trigger | Status |
+|-------|---------|--------|
+| **Intake Agent** | `contact.created` | Active |
+| **SDR Agent** | `intake.new_lead` | Active |
+| Scoring Agent | `sdr.processed` | Disabled |
+| Notification Agent | `score.changed` | Disabled |
 
-### SDR Agent v4 (merged with Intake & Scoring)
-- Trigger: `contact.created` (via database trigger)
-- Job: Get company info → Find work email (Generect) → **Load ICP config** → Score → Tiered enrichment → Deep analysis (7+) → Route
-- Work email flow:
-  1. Classify email (personal vs business)
-  2. If personal → PDL for company info (name, LinkedIn, title)
-  3. AI derives domain from company name
-  4. Generect finds validated work email ($0.03/success)
-- **Scoring uses dynamic ICP from `team_config` table**
-- Enrichment tiers (configurable via `scoring_rules` config):
-  - **Deep (7-10)**: Perplexity deep + LinkedIn + full analysis (~8-10¢)
-  - **Light (5-6)**: Perplexity light (~5¢)
-  - **None (0-4)**: Just scoring (~4¢)
+### Flow: Contact Created → Intake → SDR
+```
+1. Contact inserted (via CLI, API, webhook, form)
+2. Database trigger emits `contact.created` event (10s delay)
+3. Event Processor (Realtime) picks up event
+4. Intake Agent runs:
+   - Normalize data
+   - Check duplicates
+   - Spam detection
+   - Classify email (personal vs company)
+   - PDL lookup if personal email
+   - Emits `intake.new_lead`
+5. SDR Agent runs:
+   - Extract domain
+   - Verify email (Hunter)
+   - Enrich person/company (Apollo)
+   - Scrape LinkedIn
+   - Research company (Perplexity)
+   - Generate insight
+   - Emits `sdr.processed`
+```
 
-### 3. Contact Agent
-- Trigger: `sdr.complete` or `intake.existing_updated`
-- Job: Notify sales (hot leads 8+), queue warm leads (6-7), create follow-up tasks
+### Intake Agent (9 steps)
+- Trigger: `contact.created`
+- Job: Gatekeeper - normalizes data, checks duplicates, detects spam, routes based on email type
+- If personal email → PDL lookup for company info
+- Emits: `intake.new_lead` or `intake.basic_lead`
+
+### SDR Agent (14 steps)
+- Trigger: `intake.new_lead`
+- Job: Researcher - enriches via Hunter/Apollo/Apify/Perplexity, generates insights
+- Emits: `sdr.processed`
 
 ## Key Files
 
