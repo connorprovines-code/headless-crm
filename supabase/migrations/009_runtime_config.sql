@@ -216,6 +216,7 @@ FOR EACH ROW EXECUTE FUNCTION log_config_change();
 -- ============================================================================
 -- RLS POLICIES
 -- ============================================================================
+-- Note: Using 'users' table (not 'team_members') to match existing schema
 
 ALTER TABLE intake_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_config ENABLE ROW LEVEL SECURITY;
@@ -225,19 +226,19 @@ ALTER TABLE config_audit_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY intake_sources_team_access ON intake_sources
   FOR ALL USING (
     team_id IS NULL OR  -- Global defaults readable by all
-    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
+    team_id IN (SELECT team_id FROM users WHERE id = auth.uid())
   );
 
 -- Team config: team members can view/edit their team's config
 CREATE POLICY team_config_team_access ON team_config
   FOR ALL USING (
     team_id IS NULL OR  -- Global defaults readable by all
-    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
+    team_id IN (SELECT team_id FROM users WHERE id = auth.uid())
   );
 
 -- Audit log: read-only for team members
 CREATE POLICY config_audit_team_read ON config_audit_log
   FOR SELECT USING (
     team_id IS NULL OR
-    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
+    team_id IN (SELECT team_id FROM users WHERE id = auth.uid())
   );
