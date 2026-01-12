@@ -76,6 +76,17 @@ export async function emitEvent({ event_type, entity_type, entity_id, payload = 
 export async function processEvent(event) {
   const { id: eventId, event_type, entity_type, entity_id, payload } = event;
 
+  // Check if event has a delay_until timestamp (e.g., from DB triggers)
+  if (payload?.delay_until) {
+    const delayUntil = new Date(payload.delay_until);
+    const now = new Date();
+    if (delayUntil > now) {
+      const waitMs = delayUntil - now;
+      console.log(`[Event] Waiting ${Math.ceil(waitMs / 1000)}s for event delay...`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+
   // Find workflows triggered by this event type
   const { data: workflows, error } = await supabase
     .from('workflow_templates')

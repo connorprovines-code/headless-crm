@@ -31,7 +31,8 @@ Active work:
 │       └── 008_revised_agent_workflows.sql  # Current 3-agent pipeline
 ├── /cli
 │   ├── package.json       # Node dependencies
-│   ├── index.js           # Entry point, REPL loop
+│   ├── index.js           # Entry point, REPL loop (Orchestrator)
+│   ├── event-monitor.js   # Polls for events, triggers SDR workflow
 │   ├── supabase.js        # Supabase client setup
 │   ├── tools.js           # Shared tool library (CRUD, search, helpers)
 │   ├── prompts.js         # System prompts for CLI agent
@@ -49,13 +50,14 @@ Active work:
 
 ## Agent Pipeline (Migration 008)
 
-### 1. Intake Agent v2
-- Trigger: `contact.created`
-- Job: Extract → Spam Check → Dedupe → Route
-- Routes NEW contacts to SDR, EXISTING to Contact Agent
+### Flow: Contact Created → SDR Agent
+1. Contact inserted (via CLI, API, webhook, form - any method)
+2. Database trigger emits `contact.created` event with 10s delay
+3. Event Monitor picks up event after delay
+4. SDR Agent workflow executes
 
-### 2. SDR Agent v4 (merged with Scoring)
-- Trigger: `intake.new_contact`
+### SDR Agent v4 (merged with Intake & Scoring)
+- Trigger: `contact.created` (via database trigger)
 - Job: Get company info → Find work email (Generect) → **Load ICP config** → Score → Tiered enrichment → Deep analysis (7+) → Route
 - Work email flow:
   1. Classify email (personal vs business)
@@ -123,9 +125,24 @@ Optional:
 ## Development Workflow
 
 1. Make changes to relevant files
-2. Test locally: `cd cli && npm start`
-3. Test workflows: `node test-workflow.js`
-4. For migrations: Copy SQL to Supabase SQL editor and run
+2. Start CLI (Orchestrator): `cd cli && npm start`
+3. Start Event Monitor (in separate terminal): `cd cli && node event-monitor.js`
+4. Test workflows: `node test-workflow.js`
+5. For migrations: Use Supabase MCP or SQL editor
+
+## Running the System
+
+**Terminal 1 - Orchestrator CLI:**
+```bash
+cd cli && npm start
+```
+This is the main interface. Tell it "Add contact John Smith, john@gmail.com, works at Acme Corp"
+
+**Terminal 2 - Event Monitor:**
+```bash
+cd cli && node event-monitor.js
+```
+This polls for `contact.created` events and triggers the SDR workflow automatically.
 
 ## Conventions
 
@@ -155,13 +172,21 @@ Design decisions should consider cost/value tradeoffs.
 
 This ensures continuity across sessions when context resets.
 
+## Database Triggers
+
+Migration 010 added:
+- `contact_created_trigger` - Automatically emits `contact.created` event on any contact INSERT
+- Event includes 10s delay (`delay_until` in payload) to let data settle
+- SDR Agent only triggers on `contact.created` (not `company.created` to avoid double-processing)
+
 ## Next Steps (TODO)
 
-1. Run migration 009 to create runtime config tables
-2. Test ICP update via CLI ("Our ICP is now Series A SaaS companies")
-3. Test intake source creation ("Add a webhook for Typeform leads")
-4. Build Slack integration for Contact Agent notifications
-5. Add more robust domain derivation (Perplexity fallback if AI guess fails)
+1. ~~Run migration 009 to create runtime config tables~~ ✓
+2. ~~Create event monitor for SDR pipeline~~ ✓
+3. Test ICP update via CLI ("Our ICP is now Series A SaaS companies")
+4. Test intake source creation ("Add a webhook for Typeform leads")
+5. Build Slack integration for Contact Agent notifications
+6. Add more robust domain derivation (Perplexity fallback if AI guess fails)
 
 ## Adding a New Agent
 
