@@ -1107,23 +1107,39 @@
       },
 
       async get_icp() {
-        const { data, error } = await supabaseClient
+        // Handle null team_id properly - use .is() for null comparison
+        let query = supabaseClient
           .from('team_config')
-          .select('config_value')
-          .eq('config_key', 'icp')
-          .maybeSingle();
+          .select('id, config_value')
+          .eq('config_key', 'icp');
+
+        if (DEFAULT_TEAM_ID === null) {
+          query = query.is('team_id', null);
+        } else {
+          query = query.eq('team_id', DEFAULT_TEAM_ID);
+        }
+
+        const { data, error } = await query.maybeSingle();
         if (error) throw new Error(error.message);
         if (!data) return { message: 'No ICP configured. Using defaults.', icp: null };
         return { icp: data.config_value };
       },
 
       async update_icp({ title_keywords, company_size, industries, signals, description }) {
-        // Get current ICP to merge
-        const { data: current } = await supabaseClient
+        // Get current ICP to merge - handle null team_id properly
+        let query = supabaseClient
           .from('team_config')
-          .select('config_value')
-          .eq('config_key', 'icp')
-          .maybeSingle();
+          .select('id, config_value')
+          .eq('config_key', 'icp');
+
+        if (DEFAULT_TEAM_ID === null) {
+          query = query.is('team_id', null);
+        } else {
+          query = query.eq('team_id', DEFAULT_TEAM_ID);
+        }
+
+        const { data: current, error: fetchError } = await query.maybeSingle();
+        if (fetchError) throw new Error(fetchError.message);
 
         const currentIcp = current?.config_value || {};
         const updated = {
@@ -1135,15 +1151,27 @@
           ...(description && { description }),
         };
 
-        const { error } = await supabaseClient
-          .from('team_config')
-          .upsert({
-            team_id: DEFAULT_TEAM_ID,
-            config_key: 'icp',
-            config_value: updated
-          }, { onConflict: 'team_id,config_key' });
+        let saveError;
+        if (current?.id) {
+          // Update existing record by id (avoids null comparison issues in upsert)
+          const { error } = await supabaseClient
+            .from('team_config')
+            .update({ config_value: updated })
+            .eq('id', current.id);
+          saveError = error;
+        } else {
+          // Insert new record
+          const { error } = await supabaseClient
+            .from('team_config')
+            .insert({
+              team_id: DEFAULT_TEAM_ID,
+              config_key: 'icp',
+              config_value: updated
+            });
+          saveError = error;
+        }
 
-        if (error) throw new Error(error.message);
+        if (saveError) throw new Error(saveError.message);
         await logAgentAction('orchestrator', 'update_icp', 'config', 'icp', { title_keywords, company_size, industries, signals, description }, updated);
         return { message: 'ICP updated successfully', icp: updated };
       },
