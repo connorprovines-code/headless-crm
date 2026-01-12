@@ -13,6 +13,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // Dynamic import for tools (which depends on supabase, which needs env vars)
 const { toolDefinitions, executeTool } = await import('./tools.js');
 const { SYSTEM_PROMPT, GREETING } = await import('./prompts.js');
+const { startEventProcessor, stopEventProcessor, getStatus: getEventStatus } = await import('./event-processor.js');
 
 // Verify environment
 if (!process.env.ANTHROPIC_API_KEY) {
@@ -48,7 +49,7 @@ async function chat(userMessage) {
     const toolResults = [];
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        console.log(`  [Calling ${block.name}...]`);
+        console.log('  [Calling ' + block.name + '...]');
         try {
           const result = await executeTool(block.name, block.input);
           toolResults.push({
@@ -95,11 +96,24 @@ async function chat(userMessage) {
 
 // Main REPL loop
 async function main() {
-  console.log('\n' + GREETING);
+  // Start the native event processor (replaces separate event-monitor.js daemon)
+  console.log('');
+  await startEventProcessor();
+  console.log('');
+
+  console.log(GREETING);
 
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+  });
+
+  // Handle graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('\n\nShutting down...');
+    await stopEventProcessor();
+    rl.close();
+    process.exit(0);
   });
 
   const prompt = () => {
@@ -112,9 +126,23 @@ async function main() {
       }
 
       if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
-        console.log('Goodbye!');
+        console.log('Shutting down...');
+        await stopEventProcessor();
         rl.close();
         process.exit(0);
+      }
+
+      // Built-in status command
+      if (trimmed.toLowerCase() === 'status' || trimmed.toLowerCase() === '/status') {
+        const status = getEventStatus();
+        console.log('\n--- Event Processor Status ---');
+        console.log('Connected: ' + (status.connected ? 'Yes' : 'No'));
+        console.log('Events Processed: ' + status.eventsProcessed);
+        console.log('Registered Event Types: ' + (status.registeredEventTypes.join(', ') || 'None'));
+        console.log('Pending Queue: ' + status.pendingQueueSize);
+        console.log('------------------------------');
+        prompt();
+        return;
       }
 
       try {

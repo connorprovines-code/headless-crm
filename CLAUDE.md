@@ -31,8 +31,9 @@ Active work:
 │       └── 008_revised_agent_workflows.sql  # Current 3-agent pipeline
 ├── /cli
 │   ├── package.json       # Node dependencies
-│   ├── index.js           # Entry point, REPL loop (Orchestrator)
-│   ├── event-monitor.js   # Polls for events, triggers SDR workflow
+│   ├── index.js           # Entry point, REPL loop (Orchestrator) + Event Processor
+│   ├── event-processor.js # Native Realtime event processor (auto-starts with CLI)
+│   ├── event-monitor.js   # LEGACY: Polling-based monitor (deprecated)
 │   ├── supabase.js        # Supabase client setup
 │   ├── tools.js           # Shared tool library (CRUD, search, helpers)
 │   ├── prompts.js         # System prompts for CLI agent
@@ -125,24 +126,30 @@ Optional:
 ## Development Workflow
 
 1. Make changes to relevant files
-2. Start CLI (Orchestrator): `cd cli && npm start`
-3. Start Event Monitor (in separate terminal): `cd cli && node event-monitor.js`
-4. Test workflows: `node test-workflow.js`
-5. For migrations: Use Supabase MCP or SQL editor
+2. Start CLI: `cd cli && npm start` (event processor starts automatically)
+3. Test workflows: `node test-workflow.js`
+4. For migrations: Use Supabase MCP or SQL editor
 
 ## Running the System
 
-**Terminal 1 - Orchestrator CLI:**
+**Single Terminal - Full System:**
 ```bash
 cd cli && npm start
 ```
-This is the main interface. Tell it "Add contact John Smith, john@gmail.com, works at Acme Corp"
+This starts:
+- The CLI orchestrator (natural language interface)
+- The native event processor (Supabase Realtime subscription)
 
-**Terminal 2 - Event Monitor:**
-```bash
-cd cli && node event-monitor.js
-```
-This polls for `contact.created` events and triggers the SDR workflow automatically.
+The event processor automatically:
+- Connects to Supabase Realtime via WebSocket
+- Listens for new events (INSERT on `events` table)
+- Processes events through the workflow executor
+- Handles backlog of unprocessed events on startup
+- Auto-reconnects on connection drops
+
+**Built-in Commands:**
+- `status` or `/status` - Show event processor status
+- `exit` or `quit` - Graceful shutdown
 
 ## Conventions
 
@@ -203,6 +210,41 @@ Migration 010 added:
 - **Tiered enrichment**: Cost-aware - only deep enrich high-value leads
 - **Runtime configuration**: ICP and scoring rules stored in database, not hardcoded
 - **Self-modifying via CLI**: User can say "update my ICP" and the system updates itself
+- **Native event processing**: Supabase Realtime (WebSocket) instead of polling - instant, scalable
+
+## Event Processor Architecture
+
+The `event-processor.js` module provides native, always-on event handling:
+
+```
+CLI boots → startEventProcessor()
+         → Opens Realtime subscription to `events` table
+         → Processes any backlogged events
+         → Each new INSERT triggers handleNewEvent()
+         → Routes to workflow executor
+         → Marks event as processed
+```
+
+**Key features:**
+- **No separate daemon**: Runs inside the main CLI process
+- **Instant processing**: WebSocket push, not polling
+- **Custom handlers**: Agents can register via `registerHandler(eventType, fn)`
+- **Backlog handling**: Processes unprocessed events on startup
+- **Auto-reconnect**: Exponential backoff on connection drops
+
+**API:**
+```javascript
+import { registerHandler, getStatus } from './event-processor.js';
+
+// Register custom handler for an event type
+registerHandler('contact.created', async (event) => {
+  // Custom logic here
+}, { name: 'my-handler', priority: 10 });
+
+// Check status
+const status = getStatus();
+// { connected: true, eventsProcessed: 42, registeredEventTypes: [...] }
+```
 
 ## Runtime Configuration
 
