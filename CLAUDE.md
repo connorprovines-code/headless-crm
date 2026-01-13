@@ -1,5 +1,20 @@
 # Claude Code Context - Headless CRM
 
+## Important: Documentation Updates
+
+When shipping **major features** to any agent or workflow, update the following:
+
+1. **`docs/SYSTEM_OVERVIEW.md`** - The Orchestrator agent reads this to understand the system
+   - Add new agents/workflows to the "Active Agents & Workflows" section
+   - Update event types if new ones are added
+   - Add to changelog at bottom with date
+
+2. **This file (CLAUDE.md)** - Update relevant sections for your own context
+
+This ensures the Orchestrator has visibility into system changes it doesn't directly observe.
+
+---
+
 This file provides context for Claude Code CLI to work effectively with this repository.
 
 ## Project Overview
