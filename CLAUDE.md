@@ -102,9 +102,10 @@ Active work:
 - If personal email → PDL lookup for company info
 - Emits: `intake.new_lead` or `intake.basic_lead`
 
-### SDR Agent (14 steps)
+### SDR Agent (15 steps)
 - Trigger: `intake.new_lead`
-- Job: Researcher - enriches via Hunter/Apollo/Apify/Perplexity, generates insights
+- Job: Researcher - enriches via Hunter/PDL/Apify/Perplexity, generates insights + ICP scoring
+- Key steps: Load ICP (step 12), Generate Insight with scoring (step 13), Update Score & Insight (step 14)
 - Emits: `sdr.processed`
 
 ## Key Files

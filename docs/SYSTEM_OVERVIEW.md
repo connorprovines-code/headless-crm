@@ -26,7 +26,7 @@ Contact INSERT
     │
     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Edge Function: process-event (v4)                          │
+│  Edge Function: process-event (v6)                          │
 │  → Finds matching workflow by trigger_event                 │
 │  → Executes workflow steps                                  │
 │  → Emits follow-up events                                   │
@@ -136,6 +136,7 @@ Contact INSERT
 | `perplexity` | Company research | Enabled |
 | `generect` | Email finder (backup) | Enabled |
 | `apollo` | Person/company enrichment | Disabled |
+| `anthropic` | AI scoring & insights | Enabled |
 
 ---
 
@@ -206,6 +207,16 @@ SELECT name, is_enabled FROM integrations;
 ## Changelog
 
 ### 2026-01-13
+- Deployed Edge Function v6 with:
+  - LinkedIn scrape now uses PDL-discovered URL (not contact.linkedin_url)
+  - Added "Load ICP" step to SDR Agent (step 12)
+  - AI scoring integrated into "Generate Insight" step (JSON output with score, icp_fit, etc.)
+  - Anthropic API key loaded from `integrations` table (not env var)
+- SDR Agent now has 15 steps including ICP-based scoring
+- Added `anthropic` integration for AI scoring
+- All enrichment APIs working: PDL, Hunter, Apify (LinkedIn posts), Perplexity
+
+### 2026-01-12
 - Deployed Edge Function v4 with improved template resolution
 - Added SDR Agent (Basic) for `intake.basic_lead` events
 - Fixed Intake Agent routing for personal vs company emails
