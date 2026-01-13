@@ -149,20 +149,34 @@ Optional:
 
 ## Running the System
 
-**Single Terminal - Full System:**
+### Production (Serverless - Recommended)
+
+The system runs fully serverless via Supabase Edge Functions. **No CLI or daemon needed.**
+
+```
+Contact Created → DB Trigger → Event Inserted → pg_net webhook → Edge Function → Workflow Executed
+```
+
+**Components:**
+- **Edge Function**: `process-event` - Deployed to Supabase, processes all workflow events
+- **Database Trigger**: `on_event_inserted` on `events` table - Fires `pg_net.http_post()` to Edge Function
+- **Contact Trigger**: `contact_created_trigger` - Emits `contact.created` event on INSERT
+
+**This means:**
+- Works 24/7 without any running process
+- Scales automatically with Supabase
+- Works for any user with their own Supabase instance
+- No `npm start` required for event processing
+
+### Development (CLI)
+
+For local development and testing:
 ```bash
 cd cli && npm start
 ```
 This starts:
 - The CLI orchestrator (natural language interface)
 - The native event processor (Supabase Realtime subscription)
-
-The event processor automatically:
-- Connects to Supabase Realtime via WebSocket
-- Listens for new events (INSERT on `events` table)
-- Processes events through the workflow executor
-- Handles backlog of unprocessed events on startup
-- Auto-reconnects on connection drops
 
 **Built-in Commands:**
 - `status` or `/status` - Show event processor status
@@ -221,47 +235,50 @@ Migration 010 added:
 
 ## Key Architecture Decisions
 
+- **Serverless event processing**: Edge Function + pg_net webhook - no daemon required, runs 24/7
 - **Agents as JS files**: Each agent is defined in its own file for easy editing
 - **tools.js as shared library**: All agents import tools from here
 - **workflow-executor.js**: Generic engine that can run any agent definition
 - **Tiered enrichment**: Cost-aware - only deep enrich high-value leads
 - **Runtime configuration**: ICP and scoring rules stored in database, not hardcoded
 - **Self-modifying via CLI**: User can say "update my ICP" and the system updates itself
-- **Native event processing**: Supabase Realtime (WebSocket) instead of polling - instant, scalable
+- **Portable**: Works for any user with their own Supabase instance - just deploy Edge Function
 
 ## Event Processor Architecture
 
-The `event-processor.js` module provides native, always-on event handling:
+### Production: Edge Function (Serverless)
+
+The `process-event` Edge Function handles all event processing serverlessly:
 
 ```
-CLI boots → startEventProcessor()
-         → Opens Realtime subscription to `events` table
-         → Processes any backlogged events
-         → Each new INSERT triggers handleNewEvent()
-         → Routes to workflow executor
-         → Marks event as processed
+Contact INSERT → contact_created_trigger() → events INSERT
+             → on_event_inserted trigger → pg_net.http_post()
+             → Edge Function process-event → Workflow Executor
+             → Intake Agent → SDR Agent → etc.
 ```
+
+**Edge Function**: `supabase/functions/process-event/index.ts`
+- Receives webhook payload from pg_net
+- Finds matching workflow templates by `trigger_event`
+- Executes workflow steps (tool_call, ai_prompt, condition_check, branch)
+- Calls enrichment APIs (PDL, Hunter, Apify, Perplexity)
+- Emits follow-up events (e.g., `intake.new_lead` → triggers SDR Agent)
+- Marks events as processed
+
+**Database Triggers:**
+- `trigger_process_event()` - Calls Edge Function via `net.http_post()`
+- `emit_contact_created_event()` - Emits `contact.created` event on contact INSERT
+
+### Development: CLI Event Processor
+
+The `event-processor.js` module provides local event handling for development:
 
 **Key features:**
 - **No separate daemon**: Runs inside the main CLI process
-- **Instant processing**: WebSocket push, not polling
+- **Instant processing**: WebSocket push via Supabase Realtime
 - **Custom handlers**: Agents can register via `registerHandler(eventType, fn)`
 - **Backlog handling**: Processes unprocessed events on startup
 - **Auto-reconnect**: Exponential backoff on connection drops
-
-**API:**
-```javascript
-import { registerHandler, getStatus } from './event-processor.js';
-
-// Register custom handler for an event type
-registerHandler('contact.created', async (event) => {
-  // Custom logic here
-}, { name: 'my-handler', priority: 10 });
-
-// Check status
-const status = getStatus();
-// { connected: true, eventsProcessed: 42, registeredEventTypes: [...] }
-```
 
 ## Runtime Configuration
 
