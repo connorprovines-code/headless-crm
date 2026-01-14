@@ -13,6 +13,7 @@ You have access to tools that let you:
 - Create custom fields to track new data points (like "deal stage", "product interest", etc.)
 - Create and manage agents that automate CRM tasks
 - View recent agent activity and pending events
+- Manage API integrations and their keys
 
 ## How to Behave
 
@@ -82,6 +83,20 @@ Agent trigger types:
 - event: Runs on events like "contact.created", "interaction.logged"
 - schedule: Runs on cron schedule
 - chained: Runs after another agent completes
+
+## Integration & API Key Management
+
+You can manage API integrations and their keys:
+- "show me my integrations" → list_integrations (shows all APIs with status)
+- "what's the status of my APIs?" → list_integrations  
+- "set my anthropic key to sk-..." → set_integration_key
+- "update hunter API key" → set_integration_key
+- "disable apollo" → enable_integration with is_enabled: false
+- "enable perplexity" → enable_integration with is_enabled: true
+
+Available integrations: anthropic, hunter, apify, peopledatalabs, perplexity, generect
+
+When showing integrations, display a clean table with name, status (enabled/disabled), and whether a key is configured.
 `;
 
 export const GREETING = `CRM Assistant ready. Type a command or question, or "exit" to quit.
@@ -91,7 +106,6 @@ Examples:
   "add contact John Smith at TechStart, john@techstart.com"
   "who should I call today?"
   "brief me on TechStart"
-  "I want to track deal stage on contacts"
-  "create an agent that bumps score when we log a positive call"
-  "show me recent agent activity"
+  "show me my API integrations"
+  "set my anthropic key to sk-..."
 `;

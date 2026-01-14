@@ -493,6 +493,54 @@ export const toolDefinitions = [
       required: ['config_key', 'config_value'],
     },
   },
+  // =========================================================================
+  // INTEGRATION / API KEY MANAGEMENT
+  // =========================================================================
+  {
+    name: 'list_integrations',
+    description: 'List all API integrations and their status. Shows which enrichment APIs are enabled/disabled.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        include_disabled: { type: 'boolean', description: 'Include disabled integrations (default true)' },
+      },
+    },
+  },
+  {
+    name: 'get_integration',
+    description: 'Get details about a specific integration including whether it has credentials configured.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Integration name (e.g., anthropic, hunter, apify, peopledatalabs, perplexity)' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'set_integration_key',
+    description: 'Set or update the API key for an integration. Use this when the user wants to configure or change an API key.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Integration name (e.g., anthropic, hunter, apify, peopledatalabs, perplexity)' },
+        api_key: { type: 'string', description: 'The API key to set' },
+      },
+      required: ['name', 'api_key'],
+    },
+  },
+  {
+    name: 'enable_integration',
+    description: 'Enable or disable an integration. Disabled integrations will be skipped during enrichment.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Integration name' },
+        is_enabled: { type: 'boolean', description: 'Whether to enable (true) or disable (false) the integration' },
+      },
+      required: ['name', 'is_enabled'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -1780,6 +1828,136 @@ export async function set_config({ config_key, config_value, reason }) {
   };
 }
 
+
+// ============================================================================
+// INTEGRATION / API KEY MANAGEMENT
+// ============================================================================
+
+export async function list_integrations({ include_disabled = true }) {
+  let query = supabase
+    .from('integrations')
+    .select('name, is_enabled, credentials, created_at, updated_at')
+    .order('name');
+
+  if (!include_disabled) {
+    query = query.eq('is_enabled', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  // Map to show status without exposing actual keys
+  const integrations = (data || []).map(i => {
+    const apiKey = i.credentials?.api_key;
+    return {
+      name: i.name,
+      is_enabled: i.is_enabled,
+      has_credentials: !!i.credentials && Object.keys(i.credentials).length > 0,
+      key_preview: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.slice(-4)}` : null,
+    };
+  });
+
+  return { integrations, count: integrations.length };
+}
+
+export async function get_integration({ name }) {
+  const { data, error } = await supabase
+    .from('integrations')
+    .select('*')
+    .eq('name', name.toLowerCase())
+    .single();
+
+  if (error) throw new Error(`Integration not found: ${name}`);
+
+  const apiKey = data.credentials?.api_key;
+  return {
+    name: data.name,
+    is_enabled: data.is_enabled,
+    has_credentials: !!data.credentials && Object.keys(data.credentials).length > 0,
+    key_preview: apiKey ? `${apiKey.substring(0, 8)}...${apiKey.slice(-4)}` : null,
+    created_at: data.created_at,
+    updated_at: data.updated_at,
+  };
+}
+
+export async function set_integration_key({ name, api_key }) {
+  // Check if integration exists
+  const { data: existing, error: findError } = await supabase
+    .from('integrations')
+    .select('id, name')
+    .eq('name', name.toLowerCase())
+    .single();
+
+  if (findError) {
+    // Create new integration if it doesn't exist
+    const { data, error } = await supabase
+      .from('integrations')
+      .insert({
+        name: name.toLowerCase(),
+        credentials: { api_key },
+        is_enabled: true,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    await logAgentAction('cli', 'create_integration', 'integration', data.id,
+      { name: name.toLowerCase() }, { created: true });
+
+    return {
+      message: `Created integration '${name}' with API key`,
+      name: data.name,
+      is_enabled: data.is_enabled,
+    };
+  }
+
+  // Update existing integration
+  const { data, error } = await supabase
+    .from('integrations')
+    .update({
+      credentials: { api_key },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('name', name.toLowerCase())
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await logAgentAction('cli', 'update_integration_key', 'integration', existing.id,
+    { name: name.toLowerCase() }, { updated: true });
+
+  return {
+    message: `Updated API key for '${name}'`,
+    name: data.name,
+    is_enabled: data.is_enabled,
+    key_preview: `${api_key.substring(0, 8)}...${api_key.slice(-4)}`,
+  };
+}
+
+export async function enable_integration({ name, is_enabled }) {
+  const { data, error } = await supabase
+    .from('integrations')
+    .update({
+      is_enabled,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('name', name.toLowerCase())
+    .select()
+    .single();
+
+  if (error) throw new Error(`Integration not found: ${name}`);
+
+  await logAgentAction('cli', is_enabled ? 'enable_integration' : 'disable_integration',
+    'integration', data.id, { name: name.toLowerCase() }, { is_enabled });
+
+  return {
+    message: `${is_enabled ? 'Enabled' : 'Disabled'} integration '${name}'`,
+    name: data.name,
+    is_enabled: data.is_enabled,
+  };
+}
 // ============================================================================
 // TOOL DISPATCHER
 // ============================================================================
@@ -1834,6 +2012,11 @@ const toolFunctions = {
   get_intake_source_webhook,
   get_config,
   set_config,
+  // Integration management
+  list_integrations,
+  get_integration,
+  set_integration_key,
+  enable_integration,
 };
 
 export async function executeTool(name, input) {
